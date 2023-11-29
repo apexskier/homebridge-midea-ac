@@ -44,6 +44,7 @@ export default class ACApplianceResponse extends ApplianceResponse {
   get feelOwn() {
     return (this.data[0x08] & 0x80) !== 0;
   }
+
   // Byte 0x09
   get comfortSleep() {
     return (this.data[0x09] & 0x40) !== 0;
@@ -69,9 +70,11 @@ export default class ACApplianceResponse extends ApplianceResponse {
   get ptc() {
     return (this.data[0x09] & 0x18) >> 3;
   }
+
   get auxHeat() {
     return (this.data[0x09] & 0x08) !== 0;
   }
+
   // Byte 0x0a
   get catchCold() {
     // This needs a better name, dunno what it actually means
@@ -89,6 +92,7 @@ export default class ACApplianceResponse extends ApplianceResponse {
   get preventFreezing() {
     return (this.data[0x0a] & 0x20) !== 0;
   }
+
   // Byte 0x0b
   get indoorTemperature() {
     let indoorTempInteger;
@@ -137,6 +141,7 @@ export default class ACApplianceResponse extends ApplianceResponse {
     }
     return 0xff;
   }
+
   // Byte 0x0c
   get outdoorTemperature() {
     return (this.data[0x0c] - 50) / 2.0;

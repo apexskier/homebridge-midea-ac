@@ -23,7 +23,6 @@ import ACApplianceResponse from "./responses/ACApplianceResponse";
 
 import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
-import { MideaErrorCodes } from "./enums/MideaErrorCodes";
 import { timestamp } from "./timestamp";
 
 // STATUS ONLY OR POWER ON/OFF HEADER
@@ -257,17 +256,10 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         sessionId: this.sessionId,
       });
       if (response.data.errorCode && response.data.errorCode !== "0") {
-        if ((response.data.errorCode = MideaErrorCodes.CommandNotAccepted)) {
-          this.log.debug(
-            `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
-          );
-          return;
-        } else {
-          this.log.info(
-            `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
-          );
-          return;
-        }
+        this.log.warn(
+          `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
+        );
+        return;
       } else {
         this.log.debug(
           `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`
@@ -292,10 +284,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
 
         this.log.debug(`Target Temperature: ${device.targetTemperature}˚C`);
         this.log.debug(`Indoor Temperature: ${device.indoorTemperature}˚C`);
-
-        if (applianceResponse.outdoorTemperature < 100) {
-          this.log.debug(`Outdoor Temperature: ${device.outdoorTemperature}˚C`);
-        }
+        this.log.debug(`Outdoor Temperature: ${device.outdoorTemperature}˚C`);
         this.log.debug(`Swing Mode set to: ${device.swingMode}`);
         this.log.debug(`Fahrenheit set to: ${device.useFahrenheit}`);
         this.log.debug(`Turbo Fan set to: ${device.turboFan}`);
@@ -306,7 +295,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.log.debug(`Purifier set to: ${device.purifier}`);
 
         // Common
-        device.powerState = applianceResponse.powerState ? 1 : 0;
+        device.powerState = applianceResponse.powerState;
         device.operationalMode = applianceResponse.operationalMode;
         device.fanSpeed = applianceResponse.fanSpeed;
 
@@ -378,17 +367,14 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     });
   }
 
-  async sendUpdateToDevice(device?: MideaAccessory) {
-    if (!device) {
-      throw new Error("no device to send update to");
-    }
+  async sendUpdateToDevice(device: MideaAccessory) {
     const command = new ACSetCommand();
     command.targetTemperature = device.targetTemperature;
     command.swingMode = device.swingMode;
     command.useFahrenheit = device.useFahrenheit;
     command.ecoMode = device.ecoMode;
-    // command.screenDisplay = device.screenDisplay;
-    command.powerState = device.powerState as unknown as boolean; // TODO
+    command.screenDisplay = device.screenDisplay;
+    command.powerState = device.powerState;
     command.audibleFeedback = device.audibleFeedback;
     command.operationalMode = device.operationalMode;
     command.fanSpeed = device.fanSpeed;
@@ -437,6 +423,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       this.log.error(
         `[sendUpdateToDevice] Something went wrong while fetching the state of the device after setting new paramenters: ${err}`
       );
+      throw err;
     }
   }
 
