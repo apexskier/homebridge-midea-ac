@@ -1,31 +1,29 @@
 {
-  "name": "homebridge-midea-air",
+  "name": "@apexskier/homebridge-midea-air",
   "version": "1.7.3",
   "description": "Homebridge plugin for Midea AC units",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hillaliy/homebridge-midea-air.git"
+    "url": "git+https://github.com/apexskier/homebridge-midea-air.git"
   },
   "bugs": {
-    "url": "https://github.com/hillaliy/homebridge-midea-air/issues"
+    "url": "https://github.com/apexskier/homebridge-idea-air/issues"
   },
-  "main": "lib/index.js",
+  "main": "dist/index.js",
   "files": [
-    "/lib",
+    "/dist",
     "README.md",
     "LICENSE",
     "config.schema.json"
   ],
   "engines": {
-    "node": ">=16.0.0",
-    "homebridge": ">=1.5.0"
+    "node": ">=18.0.0",
+    "homebridge": ">=1.6.0"
   },
-  "author": "Yossi Hillali <hillaliy@me.com>",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.2.1",
     "axios-cookiejar-support": "^4.0.3",
-    "node-tunnel": "^4.0.1",
     "querystring": "^0.2.1",
     "strftime": "^0.10.1",
     "tough-cookie": "^4.1.2",
@@ -41,18 +39,24 @@
     "air conditioner"
   ],
   "devDependencies": {
-    "@types/node": "^18.11.11",
     "@types/tough-cookie": "^4.0.2",
     "@types/tunnel": "0.0.3",
-    "homebridge": "^1.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "homebridge": "^1.7.0",
+    "prettier": "^3.1.0",
+    "rimraf": "^5.0.5",
     "ts-node": "^10.9.1",
     "typescript": "^4.9.4"
   },
   "scripts": {
-    "build": "tsc"
-  },
-  "funding": {
-    "type": "paypal",
-    "url": "https://www.paypal.me/hillaliy"
+    "lint": "prettier --check . && eslint src/**.ts --max-warnings=0",
+    "fix": "prettier --write . && eslint src/**.ts --fix",
+    "watch": "npm run build && npm link && nodemon",
+    "build": "rimraf ./dist && tsc",
+    "prepublish": "npm run lint && npm run build",
+    "auth": "node auth.js"
   }
 }
