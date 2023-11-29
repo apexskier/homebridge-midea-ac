@@ -1,9 +1,9 @@
-import { userInfo } from "os";
+import { ACOperationalMode } from "../enums/ACOperationalMode";
 import ApplianceResponse from "./ApplianceResponse";
 
 export default class ACApplianceResponse extends ApplianceResponse {
   // Byte 0x02
-  get operationalMode(): number {
+  get operationalMode(): ACOperationalMode {
     return (this.data[0x02] & 0xe0) >> 5;
   }
 
@@ -14,6 +14,7 @@ export default class ACApplianceResponse extends ApplianceResponse {
       return (this.data[0x02] & 0xf) + 16.0 + 0.0;
     }
   }
+
   // Byte 0x07
   get horizontalSwing() {
     return (this.data[0x07] & 0xc) >> 2;
@@ -22,12 +23,13 @@ export default class ACApplianceResponse extends ApplianceResponse {
   get verticalSwing() {
     return this.data[0x07] & 0x3;
   }
+
   // Byte 0x08
-  get comfortSleepValue(): any {
+  get comfortSleepValue() {
     return this.data[0x08] & 0x03;
   }
 
-  get powerSaving(): any {
+  get powerSaving() {
     return (this.data[0x08] & 0x08) !== 0;
   }
 
@@ -140,24 +142,22 @@ export default class ACApplianceResponse extends ApplianceResponse {
     return (this.data[0x0c] - 50) / 2.0;
   }
 
-  getBit(pByte: any, pIndex: any) {
+  getBit(pByte: number, pIndex: number) {
     return (pByte >> pIndex) & 0x01;
   }
 
-  getBits(pBytes: any, pIndex: any, pStartIndex: any, pEndIndex: any) {
-    let StartIndex;
-    let EndIndex;
-    if (pStartIndex > pEndIndex) {
-      StartIndex = pEndIndex;
-      EndIndex = pStartIndex;
-    } else {
-      StartIndex = pStartIndex;
-      EndIndex = pEndIndex;
-    }
+  getBits(
+    pBytes: ReadonlyArray<number>,
+    pIndex: number,
+    pStartIndex: number,
+    pEndIndex: number
+  ) {
+    const startIndex = pStartIndex > pEndIndex ? pEndIndex : pStartIndex;
+    const endIndex = pStartIndex > pEndIndex ? pStartIndex : pEndIndex;
     let tempVal = 0x00;
-    let i = StartIndex;
-    while (i <= EndIndex) {
-      tempVal = tempVal | (this.getBit(pBytes[pIndex], i) << (i - StartIndex));
+    let i = startIndex;
+    while (i <= endIndex) {
+      tempVal = tempVal | (this.getBit(pBytes[pIndex], i) << (i - startIndex));
       i += 1;
     }
     return tempVal;

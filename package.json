@@ -25,10 +25,7 @@
     "axios": "^1.2.1",
     "axios-cookiejar-support": "^4.0.3",
     "querystring": "^0.2.1",
-    "strftime": "^0.10.1",
-    "tough-cookie": "^4.1.2",
-    "traverse": "^0.6.7",
-    "tunnel": "0.0.6"
+    "tough-cookie": "^4.1.2"
   },
   "keywords": [
     "homebridge",

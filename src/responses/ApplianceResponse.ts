@@ -1,11 +1,13 @@
 import { MideaSwingMode } from "../enums/MideaSwingMode";
 
 export default class ApplianceResponse {
-  data: any;
-  constructor(data: any) {
+  protected data: ReadonlyArray<number>;
+
+  constructor(data: ReadonlyArray<number>) {
     // The response data from the appliance includes a packet header which we don't want
     this.data = data.slice(0x32);
   }
+
   // Byte 0x01
   get applianceError() {
     return (this.data[0x01] & 0x80) !== 0;
@@ -31,8 +33,9 @@ export default class ApplianceResponse {
   get fanSpeed(): number {
     return this.data[0x03] & 0x7f;
   }
+
   // Byte 0x04 + 0x06
-  get onTimer(): any {
+  get onTimer() {
     const on_timer_value = this.data[0x04];
     const on_timer_minutes = this.data[0x06];
     return {
@@ -41,8 +44,9 @@ export default class ApplianceResponse {
       minutes: (on_timer_value & 0x3) | ((on_timer_minutes & 0xf0) >> 4),
     };
   }
+
   // Byte 0x05 + 0x06
-  get offTimer(): any {
+  get offTimer() {
     const off_timer_value = this.data[0x05];
     const off_timer_minutes = this.data[0x06];
     return {
@@ -51,6 +55,7 @@ export default class ApplianceResponse {
       minutes: (off_timer_value & 0x3) | (off_timer_minutes & 0xf),
     };
   }
+
   // Byte 0x07
   get swingMode(): MideaSwingMode {
     return this.data[0x07] & 0x0f;
@@ -80,6 +85,7 @@ export default class ApplianceResponse {
     // This needs a better name, dunno what it actually means
     return (this.data[0x0a] & 0x40) > 0;
   }
+
   // Byte 0x0d
   get humidity() {
     return this.data[0x0d] & 0x7f;

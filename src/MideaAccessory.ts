@@ -1,10 +1,4 @@
-import type {
-  Service,
-  PlatformAccessory,
-  CharacteristicValue,
-  CharacteristicSetCallback,
-  CharacteristicGetCallback,
-} from "homebridge";
+import type { Service, PlatformAccessory } from "homebridge";
 import { MideaPlatform } from "./MideaPlatform";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { MideaSwingMode } from "./enums/MideaSwingMode";
@@ -12,10 +6,13 @@ import { ACOperationalMode } from "./enums/ACOperationalMode";
 import { ensureNever } from "./ensureNever";
 
 export class MideaAccessory {
-  public deviceId: string = "";
-  public deviceType: MideaDeviceType = MideaDeviceType.AirConditioner;
+  // Common
+  public powerState: number = 0;
+  public audibleFeedback: boolean = true;
+  public operationalMode: ACOperationalMode = ACOperationalMode.Off;
+  public fanSpeed: number = 0;
 
-  // AirConditioner
+  // Air Conditioner
   public targetTemperature: number = 24;
   public indoorTemperature: number = 0;
   public outdoorTemperature: number = 0;
@@ -32,64 +29,43 @@ export class MideaAccessory {
   public comfortSleep: boolean = false;
   public dryer: boolean = false;
   public purifier: boolean = false;
-  public screenDisplay: number = 1;
-
-  // Common
-  public powerState: number = 0;
-  public audibleFeedback: boolean = true;
-  public operationalMode: ACOperationalMode = ACOperationalMode.Off;
-  public fanSpeed: number = 0;
-
-  public name: string = "";
-  public model: string = "";
-  public userId: string = "";
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  public firmwareVersion = require("../package.json").version;
+  //   public screenDisplay: number = 1;
 
   private service!: Service;
   private outdoorTemperatureService!: Service;
 
   constructor(
     private readonly platform: MideaPlatform,
-    private readonly accessory: PlatformAccessory,
-    private _deviceId: string,
-    private _deviceType: MideaDeviceType,
-    private _name: string,
-    private _userId: string
+    private readonly accessory: PlatformAccessory
   ) {
-    this.deviceId = _deviceId;
-    this.deviceType = _deviceType;
-    this.name = _name;
-    this.userId = _userId;
+    if (this.accessory.context.deviceType !== MideaDeviceType.AirConditioner) {
+      this.platform.log.error(
+        "Unsupported device type: ",
+        MideaDeviceType[this.accessory.context.deviceType]
+      );
+      return;
+    }
 
     this.platform.log.info(
-      `Created device: ${this.name}, with ID: ${this.deviceId}, and type: ${this.deviceType}`
+      `Creating device: ${this.accessory.context.name}, with ID: ${this.accessory.context.deviceId}`
     );
-
-    if (this.deviceType === MideaDeviceType.AirConditioner) {
-      this.model = "Air Conditioner";
-    } else this.model = "Undefined";
 
     this.accessory
       .getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(this.platform.Characteristic.Manufacturer, "Midea")
       .setCharacteristic(
         this.platform.Characteristic.FirmwareRevision,
-        this.firmwareVersion
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        require("../package.json").version
       )
-      .setCharacteristic(this.platform.Characteristic.Model, this.model)
+      .setCharacteristic(
+        this.platform.Characteristic.Model,
+        this.accessory.context.modelNumber
+      )
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
-        this.deviceId
+        this.accessory.context.sn
       );
-
-    if (this.deviceType !== MideaDeviceType.AirConditioner) {
-      this.platform.log.error(
-        "Unsupported device type: ",
-        MideaDeviceType[this.deviceType]
-      );
-      return;
-    }
 
     // Air Conditioner
     this.service =
@@ -97,79 +73,168 @@ export class MideaAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
     this.service.setCharacteristic(
       this.platform.Characteristic.Name,
-      this.name
+      this.accessory.context.name
     );
     this.service
       .getCharacteristic(this.platform.Characteristic.Active)
-      .on("get", this.handleActiveGet.bind(this))
-      .on("set", this.handleActiveSet.bind(this));
+      .onGet(() =>
+        this.powerState === 1
+          ? this.platform.Characteristic.Active.ACTIVE
+          : this.platform.Characteristic.Active.INACTIVE
+      )
+      .onSet((value) => {
+        this.platform.log.debug(`Triggered SET Active To: ${value}`);
+        if (this.powerState !== Number(value)) {
+          this.powerState = Number(value);
+          this.platform.sendUpdateToDevice(this);
+        }
+      });
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
-      .on("get", this.handleCurrentHeaterCoolerStateGet.bind(this));
+      .setProps({
+        validValues: [
+          this.platform.Characteristic.CurrentHeaterCoolerState.IDLE,
+          this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE,
+          this.platform.Characteristic.CurrentHeaterCoolerState.COOLING,
+        ],
+      })
+      .onGet(() => {
+        this.platform.log.debug("Triggered GET Current HeaterCooler State");
+        return this.currentHeaterCoolerState();
+      });
     this.service
       .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
-      .on("get", this.handleTargetHeaterCoolerStateGet.bind(this))
-      .on("set", this.handleTargetHeaterCoolerStateSet.bind(this))
       .setProps({
         validValues: [
           this.platform.Characteristic.TargetHeaterCoolerState.AUTO,
-          this.platform.Characteristic.TargetHeaterCoolerState.HEAT,
           this.platform.Characteristic.TargetHeaterCoolerState.COOL,
         ],
+      })
+      .onGet(() => this.targetHeaterCoolerState())
+      .onSet((value) => {
+        this.platform.log.debug(
+          `Triggered SET HeaterCooler State To: ${value}`
+        );
+        if (this.targetHeaterCoolerState() !== value) {
+          switch (value) {
+            case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
+              this.operationalMode = ACOperationalMode.Auto;
+              break;
+            case this.platform.Characteristic.TargetHeaterCoolerState.COOL:
+              this.operationalMode = ACOperationalMode.Cooling;
+              break;
+            case this.platform.Characteristic.TargetHeaterCoolerState.HEAT:
+              this.operationalMode = ACOperationalMode.Heating;
+              break;
+            default:
+              throw new Error(`unknown target heater cooler state: ${value}`);
+          }
+          this.platform.sendUpdateToDevice(this);
+        }
       });
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .on("get", this.handleCurrentTemperatureGet.bind(this))
       .setProps({
         minValue: -100,
         maxValue: 100,
         minStep: 0.1,
-      });
+      })
+      .onGet(() => this.indoorTemperature);
     this.service
       .getCharacteristic(
         this.platform.Characteristic.CoolingThresholdTemperature
       )
-      .on("get", this.handleThresholdTemperatureGet.bind(this))
-      .on("set", this.handleThresholdTemperatureSet.bind(this))
       .setProps({
         minValue: this.minTemperature,
         maxValue: this.maxTemperature,
         minStep: this.temperatureSteps,
-      });
-    this.service
-      .getCharacteristic(
-        this.platform.Characteristic.HeatingThresholdTemperature
-      )
-      .on("get", this.handleThresholdTemperatureGet.bind(this))
-      .on("set", this.handleThresholdTemperatureSet.bind(this))
-      .setProps({
-        minValue: this.minTemperature,
-        maxValue: this.maxTemperature,
-        minStep: this.temperatureSteps,
+      })
+      .onGet(() => this.targetTemperature)
+      .onSet((value) => {
+        this.platform.log.debug(
+          `Triggered SET ThresholdTemperature To: ${value}˚C`
+        );
+        if (this.targetTemperature !== Number(value)) {
+          this.targetTemperature = Number(value);
+          this.platform.sendUpdateToDevice(this);
+        }
       });
     this.service
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .on("get", this.handleRotationSpeedGet.bind(this))
-      .on("set", this.handleRotationSpeedSet.bind(this));
+      .onGet(() => this.rotationSpeed())
+      .onSet((value) => {
+        this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
+        if (typeof value !== "number") {
+          throw new Error("value not number");
+        }
+        // transform values in percent
+        // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
+        if (this.fanSpeed !== value) {
+          if (value <= 20) {
+            this.fanSpeed = 20;
+          } else if (value > 20 && value <= 40) {
+            this.fanSpeed = 40;
+          } else if (value > 40 && value <= 60) {
+            this.fanSpeed = 60;
+          } else if (value > 60 && value <= 80) {
+            this.fanSpeed = 80;
+          } else {
+            this.fanSpeed = 102;
+          }
+          this.platform.sendUpdateToDevice(this);
+        }
+      });
     this.service
       .getCharacteristic(this.platform.Characteristic.SwingMode)
-      .on("get", this.handleSwingModeGet.bind(this))
-      .on("set", this.handleSwingModeSet.bind(this));
+      .onGet(() => this.getSwingMode())
+      .onSet((value) => {
+        this.platform.log.debug(`Triggered SET SwingMode To: ${value}`);
+        // convert this.swingMode to a 0/1
+        if (this.swingMode !== value) {
+          this.swingMode = value ? this.supportedSwingMode : 0;
+          this.platform.sendUpdateToDevice(this);
+        }
+      });
     this.service
       .getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
-      .on("get", this.handleTemperatureDisplayUnitsGet.bind(this))
-      .on("set", this.handleTemperatureDisplayUnitsSet.bind(this))
       .setProps({
         validValues: [
           this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT,
           this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS,
         ],
+      })
+      .onGet(() =>
+        this.useFahrenheit
+          ? this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT
+          : this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS
+      )
+      .onSet((value) => {
+        this.platform.log.debug(
+          `Triggered SET Temperature Display Units To: ${value}`
+        );
+        if (this.useFahrenheit !== value) {
+          this.useFahrenheit = value === 1;
+          this.platform.sendUpdateToDevice(this);
+        }
       });
-    // Use to control Screen display
-    this.service
-      .getCharacteristic(this.platform.Characteristic.LockPhysicalControls)
-      .on("get", this.handleLockPhysicalControlsGet.bind(this))
-      .on("set", this.handleLockPhysicalControlsSet.bind(this));
+
+    // // Use to control Screen display
+    // this.service
+    //   .getCharacteristic(this.platform.Characteristic.LockPhysicalControls)
+    //   .onGet(() =>
+    //     this.screenDisplay === 1
+    //       ? this.platform.Characteristic.LockPhysicalControls
+    //           .CONTROL_LOCK_ENABLED
+    //       : this.platform.Characteristic.LockPhysicalControls
+    //           .CONTROL_LOCK_DISABLED
+    //   )
+    //   .onSet((value) => {
+    //     if (this.screenDisplay !== Number(value)) {
+    //       this.platform.log.debug(`Triggered SET Screen Display To: ${value}`);
+    //       this.screenDisplay = Number(value);
+    //       this.platform.sendUpdateToDevice(this);
+    //     }
+    //   });
 
     // Update HomeKit
     setInterval(() => {
@@ -194,10 +259,6 @@ export class MideaAccessory {
         this.targetTemperature
       );
       this.service.updateCharacteristic(
-        this.platform.Characteristic.HeatingThresholdTemperature,
-        this.targetTemperature
-      );
-      this.service.updateCharacteristic(
         this.platform.Characteristic.RotationSpeed,
         this.rotationSpeed()
       );
@@ -209,10 +270,10 @@ export class MideaAccessory {
         this.platform.Characteristic.TemperatureDisplayUnits,
         this.useFahrenheit
       );
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.LockPhysicalControls,
-        this.screenDisplay
-      );
+      //   this.service.updateCharacteristic(
+      //     this.platform.Characteristic.LockPhysicalControls,
+      //     this.screenDisplay
+      //   );
     }, 5000);
 
     this.platform.log.debug("Add Outdoor Temperature Sensor");
@@ -225,28 +286,15 @@ export class MideaAccessory {
     );
     this.outdoorTemperatureService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .on("get", this.handleOutdoorTemperatureGet.bind(this));
+      .onGet(() => this.outdoorTemperature);
   }
 
-  handleActiveGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET Active");
-    if (this.powerState === 1) {
-      callback(null, this.platform.Characteristic.Active.ACTIVE);
-    } else {
-      callback(null, this.platform.Characteristic.Active.INACTIVE);
-    }
+  get name() {
+    return this.accessory.context.name;
   }
 
-  handleActiveSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    if (this.powerState !== Number(value)) {
-      this.platform.log.debug(`Triggered SET Active To: ${value}`);
-      this.powerState = Number(value);
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
+  get deviceId() {
+    return this.accessory.context.deviceId;
   }
 
   public currentHeaterCoolerState() {
@@ -262,6 +310,7 @@ export class MideaAccessory {
         }
         return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
       case ACOperationalMode.Heating:
+        this.platform.log.warn("unexpectedly in heating state");
         if (this.indoorTemperature <= this.targetTemperature) {
           return this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
         }
@@ -283,11 +332,6 @@ export class MideaAccessory {
     }
   }
 
-  handleCurrentHeaterCoolerStateGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET Current HeaterCooler State");
-    callback(null, this.currentHeaterCoolerState());
-  }
-
   targetHeaterCoolerState() {
     if (this.operationalMode === ACOperationalMode.Cooling) {
       return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
@@ -298,66 +342,7 @@ export class MideaAccessory {
     return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
   }
 
-  handleTargetHeaterCoolerStateGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET Target HeaterCooler State");
-    callback(null, this.targetHeaterCoolerState());
-  }
-
-  handleTargetHeaterCoolerStateSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    if (this.targetHeaterCoolerState() !== value) {
-      this.platform.log.debug(`Triggered SET HeaterCooler State To: ${value}`);
-      switch (value) {
-        case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
-          this.operationalMode = ACOperationalMode.Auto;
-          break;
-        case this.platform.Characteristic.TargetHeaterCoolerState.COOL:
-          this.operationalMode = ACOperationalMode.Cooling;
-          break;
-        case this.platform.Characteristic.TargetHeaterCoolerState.HEAT:
-          this.operationalMode = ACOperationalMode.Heating;
-          break;
-        default:
-          throw new Error("unknown target heater cooler state");
-      }
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
-  handleCurrentTemperatureGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET CurrentTemperature");
-    callback(null, this.indoorTemperature);
-  }
-
-  handleThresholdTemperatureGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET ThresholdTemperature");
-    callback(null, this.targetTemperature);
-  }
-
-  handleThresholdTemperatureSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    if (this.useFahrenheit === true) {
-      this.platform.log.debug(
-        `Triggered SET ThresholdTemperature To: ${value}˚F`
-      );
-    } else {
-      this.platform.log.debug(
-        `Triggered SET ThresholdTemperature To: ${value}˚C`
-      );
-    }
-    if (this.targetTemperature !== Number(value)) {
-      this.targetTemperature = Number(value);
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
-  public rotationSpeed() {
+  rotationSpeed() {
     // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
     // New Midea devices has slider between 1%-100%
     // convert to good usable slider in homekit in percent
@@ -383,159 +368,9 @@ export class MideaAccessory {
     return currentValue;
   }
 
-  handleRotationSpeedGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET RotationSpeed");
-    callback(null, this.rotationSpeed());
-  }
-
-  handleRotationSpeedSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
-    if (typeof value !== "number") {
-      throw new Error("value not number");
-    }
-    // transform values in percent
-    // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
-    if (this.fanSpeed !== value) {
-      if (value <= 20) {
-        this.fanSpeed = 20;
-      } else if (value > 20 && value <= 40) {
-        this.fanSpeed = 40;
-      } else if (value > 40 && value <= 60) {
-        this.fanSpeed = 60;
-      } else if (value > 60 && value <= 80) {
-        this.fanSpeed = 80;
-      } else {
-        this.fanSpeed = 102;
-      }
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
   getSwingMode() {
     return this.swingMode !== 0
       ? this.platform.Characteristic.SwingMode.SWING_ENABLED
       : this.platform.Characteristic.SwingMode.SWING_DISABLED;
-  }
-
-  handleSwingModeGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET SwingMode");
-    callback(null, this.getSwingMode());
-  }
-
-  handleSwingModeSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    this.platform.log.debug(`Triggered SET SwingMode To: ${value}`);
-    // convert this.swingMode to a 0/1
-    if (this.swingMode !== value) {
-      this.swingMode = value ? this.supportedSwingMode : 0;
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
-  handleTemperatureDisplayUnitsGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET Temperature Display Units");
-    if (this.useFahrenheit === true) {
-      callback(
-        null,
-        this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT
-      );
-    } else {
-      callback(
-        null,
-        this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS
-      );
-    }
-  }
-
-  handleTemperatureDisplayUnitsSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    this.platform.log.debug(
-      `Triggered SET Temperature Display Units To: ${value}`
-    );
-    if (this.useFahrenheit !== value) {
-      if (value === 1) {
-        this.useFahrenheit = true;
-      } else {
-        this.useFahrenheit = false;
-      }
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
-  handleLockPhysicalControlsGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET Screen Display");
-    if (this.screenDisplay === 1) {
-      callback(
-        null,
-        this.platform.Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED
-      );
-    } else {
-      callback(
-        null,
-        this.platform.Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED
-      );
-    }
-  }
-
-  handleLockPhysicalControlsSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    if (this.screenDisplay !== Number(value)) {
-      this.platform.log.debug(`Triggered SET Screen Display To: ${value}`);
-      this.screenDisplay = Number(value);
-      this.platform.sendUpdateToDevice(this);
-    }
-    callback(null);
-  }
-
-  // Fan mode
-  // Get the current value of the "FanActive" characteristic
-  public fanActive() {
-    if (
-      this.operationalMode === ACOperationalMode.FanOnly &&
-      this.powerState === this.platform.Characteristic.Active.ACTIVE
-    ) {
-      return this.platform.Characteristic.Active.ACTIVE;
-    } else {
-      return this.platform.Characteristic.Active.INACTIVE;
-    }
-  }
-
-  handleFanActiveGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET FanMode");
-    callback(null, this.fanActive());
-  }
-
-  handleFanActiveSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback
-  ) {
-    this.platform.log.debug(`Triggered SET FanMode To: ${value}`);
-    if (value === 1 && this.powerState === 1) {
-      this.operationalMode = ACOperationalMode.FanOnly;
-    } else if (value === 1 && this.powerState === 0) {
-      this.powerState = this.platform.Characteristic.Active.ACTIVE;
-      this.operationalMode = ACOperationalMode.FanOnly;
-    } else if (value === 0 && this.powerState === 1) {
-      this.powerState = this.platform.Characteristic.Active.INACTIVE;
-    }
-    this.platform.sendUpdateToDevice(this);
-    callback(null);
-  }
-
-  handleOutdoorTemperatureGet(callback: CharacteristicGetCallback) {
-    this.platform.log.debug("Triggered GET CurrentTemperature");
-    callback(null, this.outdoorTemperature);
   }
 }

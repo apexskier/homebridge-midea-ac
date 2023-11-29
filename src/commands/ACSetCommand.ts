@@ -48,6 +48,7 @@ export default class ACSetCommand extends SetCommand {
       this.data[0x0c] |= 0x10;
     }
   }
+
   // Byte 0x11
   get horizontalSwing() {
     return (this.data[0x11] & 0x3) >> 2;
