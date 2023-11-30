@@ -133,36 +133,9 @@ export const UpdateCommand_AirCon = [
 
 export const UserAgent: string =
   "Dalvik/2.22.0 (Linux; U; Android 9.0; SM-G935F Build/NRD90M)";
-// These values are from the official Midea Air app, adjust if you want to use different credentials
-export const AppId: string = "1117";
-export const AppKey: string = "ff0cf6f5f0c3471de36341cab3f7a9af";
-export const Language: string = "en-US";
-export const ClientType: string = "1"; // 0: PC, 1: Android, 2: IOS
-export const RequestFormat: string = "2"; // JSON
-export const RequestSource: string = "1010"; // '17'
-
-export const supportedApps = {
-  // NetHomePlus: {
-  //   appKey: "3742e9e5842d4ad59c2db887e12449f9";
-  //   appId: "1017";
-  //   apiURL: "https://mapp.appsmb.com";
-  //   signKey: "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S";
-  //   proxied: null;
-  // };
-  MideaAir: {
-    appKey: "ff0cf6f5f0c3471de36341cab3f7a9af",
-    appId: "1117",
-    apiURL: "https://mapp.appsmb.com",
-    signKey: "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S",
-    proxied: null,
-  },
-  // MSmartHome: {
-  //   appKey: "ac21b9f9cbfe4ca5a88562ef25e2b768";
-  //   appId: "1010";
-  //   apiURL: "https://mp-prod.appsmb.com/mas/v5/app/proxy?alias=";
-  //   signKey: "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S";
-  //   iotKey: "meicloud";
-  //   hmacKey: "PROD_VnoClJI9aikS8dyy";
-  //   proxied: "v5";
-  // };
-} as const;
+export const AppId = 1017; // "1117";
+export const AppKey = "3742e9e5842d4ad59c2db887e12449f9"; // "ff0cf6f5f0c3471de36341cab3f7a9af";
+export const Language = "en_US";
+export const ClientType = 1; // 0: PC, 1: Android, 2: IOS
+export const RequestFormat = 2; // JSON
+export const RequestSource = 1017;

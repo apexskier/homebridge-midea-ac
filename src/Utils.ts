@@ -33,19 +33,10 @@ export function getStamp(): string {
     .replace(/T/g, "");
 }
 
-export function formatResponse(arr: ReadonlyArray<string>) {
-  const output: string[] = [];
-  for (let i = 0; i < arr.length; i++) {
-    const intValue = parseInt(arr[i]);
-    output.push(intValue.toString(2));
-  }
-  return output;
-}
-
 export function getSign(
   path: string,
   form: Record<string, string | number | boolean>,
-  appKey: string,
+  appKey: string
 ) {
   if (path === "") {
     throw new Error("path required");
@@ -54,22 +45,14 @@ export function getSign(
     throw new Error("form required");
   }
 
-  let postfix = `/v1${path}`;
-  postfix = postfix.split("?")[0];
-  // Maybe this will help, should remove any query string parameters in the URL from the sign
-  const ordered = {};
-  Object.keys(form)
+  // let postfix = `/v1${path}`;
+  // postfix = postfix.split("?")[0];
+  const query = Object.keys(form)
     .sort()
-    .forEach((key) => {
-      ordered[key] = form[key];
-    });
-  const query = Object.keys(ordered)
-    .map((key) => key + "=" + ordered[key])
+    .map((key) => `${key}=${form[key]}`)
     .join("&");
-  return crypto
-    .createHash("sha256")
-    .update(postfix + query + appKey)
-    .digest("hex");
+  const payload = path + query + appKey;
+  return crypto.createHash("sha256").update(payload).digest("hex");
 }
 
 export function decryptAes(reply: string, dataKey: string) {
@@ -97,7 +80,7 @@ export function decryptAesString(reply: string, dataKey: string) {
   return decipher.update(reply, "hex", "utf8");
 }
 
-export function encryptAes(query: number[], dataKey: string) {
+export function encryptAes(query: number[] | Buffer, dataKey: string) {
   if (!query) {
     throw new Error("query required");
   }
@@ -111,21 +94,10 @@ export function encryptAes(query: number[], dataKey: string) {
   return ciph;
 }
 
-export function encryptAesString(query: string, dataKey: string) {
-  if (!dataKey) {
-    throw new Error("dataKey required");
-  }
-
-  const cipher = crypto.createCipheriv("aes-128-ecb", dataKey, "");
-  let ciph = cipher.update(query, "utf8", "hex");
-  ciph += cipher.final("hex");
-  return ciph;
-}
-
 export function getSignPassword(
   loginId: string,
   password: string,
-  appKey: string,
+  appKey: string
 ) {
   if (!loginId) {
     throw new Error("loginId required");
@@ -150,35 +122,7 @@ export function generateDataKey(accessToken: string, appKey: string) {
   const decipher = crypto.createDecipheriv(
     "aes-128-ecb",
     md5AppKey.slice(0, 16),
-    "",
+    ""
   );
   return decipher.update(accessToken, "hex", "utf8");
 }
-
-export function encryptIAMPassword(
-  loginId: string,
-  password: string,
-  appKey: string,
-) {
-  const passwordHash = crypto.createHash("md5").update(password).digest();
-  const password2ndHash = crypto
-    .createHash("md5")
-    .update(passwordHash)
-    .digest();
-  return crypto
-    .createHash("sha256")
-    .update(loginId + password2ndHash + appKey)
-    .digest("hex");
-}
-
-export function getSignProxied(form: string) {
-  const msg = `meicloud${form}${randomString}`;
-  return crypto
-    .createHmac("sha256", "PROD_VnoClJI9aikS8dyy")
-    .update(msg)
-    .digest("hex");
-}
-
-export const randomString = Math.floor(new Date().getTime() / 1000).toString();
-export const pushToken = crypto.randomBytes(120).toString("base64");
-export const reqId = crypto.randomBytes(16).toString("hex");

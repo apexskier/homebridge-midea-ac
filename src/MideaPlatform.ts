@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   API,
   DynamicPlatformPlugin,
@@ -56,7 +57,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
-    public readonly api: API,
+    public readonly api: API
   ) {
     axiosCookieJarSupport(axios);
     this.jar = new tough.CookieJar();
@@ -97,8 +98,8 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       });
   }
 
-  async apiRequest(url: string, data: Record<string, string>) {
-    const form: Record<string, string> = {
+  async apiRequest(url: string, data: Record<string, string | number>) {
+    const form: Record<string, string | number> = {
       src: Constants.RequestSource,
       format: Constants.RequestFormat,
       stamp: timestamp(),
@@ -116,7 +117,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     const loginData = {
       clientType: Constants.ClientType,
       appId: Constants.AppId,
-      reqid: Utils.reqId,
+      reqid: crypto.randomBytes(16).toString("hex"),
     };
 
     try {
@@ -131,20 +132,20 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         const password: string = Utils.getSignPassword(
           loginId,
           this.config.password,
-          Constants.AppKey,
+          Constants.AppKey
         );
         try {
           const loginResponse = await this.apiRequest("/user/login", {
             ...loginData,
             loginAccount: this.config["user"],
-            password: password,
+            password,
           });
           if (
             loginResponse.data.errorCode &&
             loginResponse.data.errorCode !== "0"
           ) {
             this.log.debug(
-              `Login request 2 returned error: ${loginResponse.data.msg}`,
+              `Login request 2 returned error: ${loginResponse.data.msg}`
             );
           } else {
             this.accessToken = loginResponse.data.result.accessToken;
@@ -152,7 +153,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
             this.userId = loginResponse.data.result.userId;
             this.dataKey = Utils.generateDataKey(
               this.accessToken,
-              Constants.AppKey,
+              Constants.AppKey
             );
           }
         } catch (err) {
@@ -183,19 +184,19 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.log.warn(
           `Device: ${currentElement.name} is of unsupported type: ${
             MideaDeviceType[parseInt(currentElement.type)]
-          }`,
+          }`
         );
         return;
       }
 
       const uuid = this.api.hap.uuid.generate(currentElement.id);
       const existingAccessory = this.accessories.find(
-        (accessory) => accessory.UUID === uuid,
+        (accessory) => accessory.UUID === uuid
       );
       if (existingAccessory) {
         this.log.debug(
           "Restoring cached accessory",
-          existingAccessory.displayName,
+          existingAccessory.displayName
         );
         existingAccessory.context.deviceId = currentElement.id;
         existingAccessory.context.deviceType = parseInt(currentElement.type);
@@ -204,7 +205,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         existingAccessory.context.modelNumber = currentElement.modelNumber;
         existingAccessory.context.sn = Utils.decryptAesString(
           currentElement.sn,
-          this.dataKey,
+          this.dataKey
         );
         this.log.debug(`Model Number:${existingAccessory.context.modelNumber}`);
         this.log.debug(`Serial Number:${existingAccessory.context.sn}`);
@@ -216,7 +217,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.log.debug(`Adding new device: ${currentElement.name}`);
         const accessory = new this.api.platformAccessory(
           currentElement.name,
-          uuid,
+          uuid
         );
         accessory.context.deviceId = currentElement.id;
         accessory.context.deviceType = parseInt(currentElement.type);
@@ -225,7 +226,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         accessory.context.modelNumber = currentElement.modelNumber;
         accessory.context.sn = Utils.decryptAesString(
           currentElement.sn,
-          this.dataKey,
+          this.dataKey
         );
         this.log.debug(`Model Number:${accessory.context.modelNumber}`);
         this.log.debug(`Serial Number:${accessory.context.sn}`);
@@ -243,7 +244,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     device: MideaAccessory,
     data: ReadonlyArray<number>,
     intent: string,
-    firstTry = true,
+    firstTry = true
   ) {
     try {
       const response = await this.apiRequest("/appliance/transparent/send", {
@@ -266,17 +267,15 @@ export class MideaPlatform implements DynamicPlatformPlugin {
             }
         }
         throw new Error(
-          `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`,
+          `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
         );
       }
 
       this.log.debug(
-        `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`,
+        `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`
       );
       const applianceResponse = new ACApplianceResponse(
-        Utils.decode(
-          Utils.decryptAes(response.data.result.reply, this.dataKey),
-        ),
+        Utils.decode(Utils.decryptAes(response.data.result.reply, this.dataKey))
       );
 
       device.targetTemperature = applianceResponse.targetTemperature;
@@ -324,14 +323,14 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   async updateValues() {
     for (const accessory of this.accessories) {
       this.log.debug(
-        `Updating accessory: ${accessory.context.name} (${accessory.context.deviceId})`,
+        `Updating accessory: ${accessory.context.name} (${accessory.context.deviceId})`
       );
       const mideaAccessory = this.mideaAccessories.find(
-        (ma) => ma.deviceId === accessory.context.deviceId,
+        (ma) => ma.deviceId === accessory.context.deviceId
       );
       if (!mideaAccessory) {
         this.log.warn(
-          `Could not find accessory with id: ${accessory.context.deviceId}`,
+          `Could not find accessory with id: ${accessory.context.deviceId}`
         );
         return;
       }
@@ -340,7 +339,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       await this.sendCommand(
         mideaAccessory,
         ac_data_header.concat(Constants.UpdateCommand_AirCon),
-        "[updateValues]",
+        "[updateValues]"
       );
     }
   }
@@ -361,7 +360,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     pktBuilder.command = command;
     const data = pktBuilder.finalize();
     this.log.debug(
-      `[sendUpdateToDevice] Header + Command: ${JSON.stringify(data)}`,
+      `[sendUpdateToDevice] Header + Command: ${JSON.stringify(data)}`
     );
 
     await this.sendCommand(device, data, "[sendUpdateToDevice]");

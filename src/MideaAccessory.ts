@@ -39,18 +39,18 @@ export class MideaAccessory {
 
   constructor(
     private readonly platform: MideaPlatform,
-    private readonly accessory: PlatformAccessory,
+    private readonly accessory: PlatformAccessory
   ) {
     if (this.accessory.context.deviceType !== MideaDeviceType.AirConditioner) {
       this.platform.log.error(
         "Unsupported device type: ",
-        MideaDeviceType[this.accessory.context.deviceType],
+        MideaDeviceType[this.accessory.context.deviceType]
       );
       return;
     }
 
     this.platform.log.info(
-      `Creating device: ${this.accessory.context.name}, with ID: ${this.accessory.context.deviceId}`,
+      `Creating device: ${this.accessory.context.name}, with ID: ${this.accessory.context.deviceId}`
     );
 
     this.accessory
@@ -59,15 +59,15 @@ export class MideaAccessory {
       .setCharacteristic(
         this.platform.Characteristic.FirmwareRevision,
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        require("../package.json").version,
+        require("../package.json").version
       )
       .setCharacteristic(
         this.platform.Characteristic.Model,
-        this.accessory.context.modelNumber,
+        this.accessory.context.modelNumber
       )
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
-        this.accessory.context.sn,
+        this.accessory.context.sn
       );
 
     // Air Conditioner
@@ -76,7 +76,7 @@ export class MideaAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
     this.heaterCoolerService.setCharacteristic(
       this.platform.Characteristic.Name,
-      this.accessory.context.name,
+      this.accessory.context.name
     );
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.Active)
@@ -111,7 +111,7 @@ export class MideaAccessory {
       .onGet(() => this.getTargetHeaterCoolerState())
       .onSet((value) => {
         this.platform.log.debug(
-          `Triggered SET HeaterCooler State To: ${value}`,
+          `Triggered SET HeaterCooler State To: ${value}`
         );
         if (this.getTargetHeaterCoolerState() !== value) {
           switch (value) {
@@ -140,7 +140,7 @@ export class MideaAccessory {
       .onGet(() => this.indoorTemperature);
     this.heaterCoolerService
       .getCharacteristic(
-        this.platform.Characteristic.CoolingThresholdTemperature,
+        this.platform.Characteristic.CoolingThresholdTemperature
       )
       .setProps({
         // minValue: 16,
@@ -150,7 +150,7 @@ export class MideaAccessory {
       .onGet(() => this.targetTemperature)
       .onSet((value) => {
         this.platform.log.debug(
-          `Triggered SET ThresholdTemperature To: ${value}˚C`,
+          `Triggered SET ThresholdTemperature To: ${value}˚C`
         );
         if (this.targetTemperature !== Number(value)) {
           this.targetTemperature = Number(value);
@@ -172,7 +172,7 @@ export class MideaAccessory {
       .onGet(this.getTemperatureDisplayUnits.bind(this))
       .onSet((value) => {
         this.platform.log.debug(
-          `Triggered SET Temperature Display Units To: ${value}`,
+          `Triggered SET Temperature Display Units To: ${value}`
         );
         const valueIsFahrenheit =
           value ===
@@ -271,18 +271,19 @@ export class MideaAccessory {
       this.accessory.addService(this.platform.Service.TemperatureSensor);
     this.outdoorTemperatureService.setCharacteristic(
       this.platform.Characteristic.Name,
-      "Outdoor Temperature",
+      "Outdoor Temperature"
     );
     this.outdoorTemperatureService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .onGet(() => this.outdoorTemperature);
+    // TODO: set a fault on this if the AC is offline
 
     this.ecoSwitchService =
       this.accessory.getService(this.platform.Service.Switch) ||
       this.accessory.addService(this.platform.Service.Switch);
     this.ecoSwitchService.setCharacteristic(
       this.platform.Characteristic.Name,
-      "Eco Mode",
+      "Eco Mode"
     );
     this.ecoSwitchService
       .getCharacteristic(this.platform.Characteristic.On)
@@ -299,31 +300,31 @@ export class MideaAccessory {
     setInterval(() => {
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.Active,
-        this.getHeaterCoolerActive(),
+        this.getHeaterCoolerActive()
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.CurrentHeaterCoolerState,
-        this.getCurrentHeaterCoolerState(),
+        this.getCurrentHeaterCoolerState()
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.TargetHeaterCoolerState,
-        this.getTargetHeaterCoolerState(),
+        this.getTargetHeaterCoolerState()
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.CurrentTemperature,
-        this.indoorTemperature,
+        this.indoorTemperature
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.CoolingThresholdTemperature,
-        this.targetTemperature,
+        this.targetTemperature
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.SwingMode,
-        this.getSwingMode(),
+        this.getSwingMode()
       );
       this.heaterCoolerService.updateCharacteristic(
         this.platform.Characteristic.TemperatureDisplayUnits,
-        this.getTemperatureDisplayUnits(),
+        this.getTemperatureDisplayUnits()
       );
       //   this.heaterCoolerService.updateCharacteristic(
       //     this.platform.Characteristic.LockPhysicalControls,
@@ -336,33 +337,33 @@ export class MideaAccessory {
 
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.Active,
-        this.getFanActive(),
+        this.getFanActive()
       );
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.CurrentFanState,
-        this.getCurrentFanState(),
+        this.getCurrentFanState()
       );
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.TargetFanState,
-        this.getTargetFanState(),
+        this.getTargetFanState()
       );
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.RotationSpeed,
-        this.getRotationSpeed(),
+        this.getRotationSpeed()
       );
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.SwingMode,
-        this.getSwingMode(),
+        this.getSwingMode()
       );
 
       this.ecoSwitchService.updateCharacteristic(
         this.platform.Characteristic.On,
-        this.ecoMode,
+        this.ecoMode
       );
 
       this.outdoorTemperatureService.updateCharacteristic(
         this.platform.Characteristic.CurrentTemperature,
-        this.outdoorTemperature,
+        this.outdoorTemperature
       );
     }, 5000);
   }

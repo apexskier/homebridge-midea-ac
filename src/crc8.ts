@@ -1,12 +1,12 @@
 import * as Constants from "./Constants";
 
-export function calculate(data: ReadonlyArray<number>) {
-  let crc_value = 0;
+export function calculate(data: ReadonlyArray<number> | Uint8Array) {
+  let v = 0;
   for (const m of data) {
-    let k = crc_value ^ m;
+    let k = v ^ m;
     if (k > 256) k -= 256;
     if (k < 0) k += 256;
-    crc_value = Constants.crc8_854_table[k];
+    v = Constants.crc8_854_table[k];
   }
-  return crc_value;
+  return v;
 }
