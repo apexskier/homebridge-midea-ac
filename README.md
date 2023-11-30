@@ -12,4 +12,4 @@ I've customized this fork pretty highly to my specific use cases, feel free to f
 
 ## Gotchas
 
-* midea only allows one login session at a time - you'll get logged out of the app when this starts, and logging into the app will log out homebridge (which will then try to log back in)
+- midea only allows one login session at a time - you'll get logged out of the app when this starts, and logging into the app will log out homebridge (which will then try to log back in)

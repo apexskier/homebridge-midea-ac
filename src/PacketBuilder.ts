@@ -57,7 +57,7 @@ export default class PacketBuilder {
     this.packet = this.packet.concat([this.checksum(this._command.slice(1))]);
     // Ehh... I dunno, but this seems to make things work. Padding with 0's
     this.packet = this.packet.concat(
-      new Array(49 - this._command.length).fill(0)
+      new Array(49 - this._command.length).fill(0),
     );
     // Set the packet length in the packet!
     this.packet[0x04] = this.packet.length;

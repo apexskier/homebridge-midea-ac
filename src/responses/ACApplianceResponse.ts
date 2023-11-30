@@ -155,7 +155,7 @@ export default class ACApplianceResponse extends ApplianceResponse {
     pBytes: ReadonlyArray<number>,
     pIndex: number,
     pStartIndex: number,
-    pEndIndex: number
+    pEndIndex: number,
   ) {
     const startIndex = pStartIndex > pEndIndex ? pEndIndex : pStartIndex;
     const endIndex = pStartIndex > pEndIndex ? pStartIndex : pEndIndex;
