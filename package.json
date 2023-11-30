@@ -1,13 +1,13 @@
 {
-  "name": "@apexskier/homebridge-midea-air",
+  "name": "@apexskier/homebridge-midea-ac",
   "version": "1.0.0",
   "description": "Homebridge plugin for Midea AC units",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/apexskier/homebridge-midea-air.git"
+    "url": "git+https://github.com/apexskier/homebridge-midea-ac.git"
   },
   "bugs": {
-    "url": "https://github.com/apexskier/homebridge-idea-air/issues"
+    "url": "https://github.com/apexskier/homebridge-midea-ac/issues"
   },
   "main": "dist/index.js",
   "files": [
