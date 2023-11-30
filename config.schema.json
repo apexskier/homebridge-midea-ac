@@ -13,10 +13,7 @@
       "password": {
         "title": "Midea account password",
         "type": "string",
-        "x-schema-form": {
-          "type": "password",
-          "required": true
-        }
+        "required": true
       }
     }
   }

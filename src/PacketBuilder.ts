@@ -1,53 +1,50 @@
 import BaseCommand from "./BaseCommand";
 
 export default class PacketBuilder {
-  _command: number[] = [];
-  packet: number[] = [];
-  constructor() {
-    // Init the packet with the header data.
-    this.packet = [
-      90,
-      90, // Byte 0-1		- Static MSmart header
-      1,
-      16, // Byte 2-3		- mMessageType
-      92,
-      0, // Byte 4-5		- Packet length (reversed, lb first)
-      32, // Byte 6
-      0, // Byte 7
-      1,
-      0,
-      0,
-      0, // Byte 8-11		- MessageID	(rollover at 32767)
-      189,
-      179,
-      57,
-      14,
-      12,
-      5,
-      20,
-      20, // Byte 12-19		- Time and Date (ms/ss/mm/HH/DD/MM/YYYY)
-      29,
-      129,
-      0,
-      0,
-      0,
-      16,
-      0,
-      0, // Byte 20-27		- DeviceID (reversed, lb first)
-      0,
-      4,
-      2,
-      0,
-      0,
-      1, // Byte 28-33
-      0, // Byte 34
-      0, // Byte 35
-      0, // Byte 36			- sequence number
-      0,
-      0,
-      0, // Byte 37-39
-    ];
-  }
+  private _command: number[] = [];
+
+  packet = [
+    90,
+    90, // Byte 0-1		- Static MSmart header
+    1,
+    16, // Byte 2-3		- mMessageType
+    92,
+    0, // Byte 4-5		- Packet length (reversed, lb first)
+    32, // Byte 6
+    0, // Byte 7
+    1,
+    0,
+    0,
+    0, // Byte 8-11		- MessageID	(rollover at 32767)
+    189,
+    179,
+    57,
+    14,
+    12,
+    5,
+    20,
+    20, // Byte 12-19		- Time and Date (ms/ss/mm/HH/DD/MM/YYYY)
+    29,
+    129,
+    0,
+    0,
+    0,
+    16,
+    0,
+    0, // Byte 20-27		- DeviceID (reversed, lb first)
+    0,
+    4,
+    2,
+    0,
+    0,
+    1, // Byte 28-33
+    0, // Byte 34
+    0, // Byte 35
+    0, // Byte 36			- sequence number
+    0,
+    0,
+    0, // Byte 37-39
+  ];
 
   set command(command: BaseCommand) {
     this._command = command.finalize();

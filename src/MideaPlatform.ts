@@ -24,6 +24,7 @@ import ACApplianceResponse from "./responses/ACApplianceResponse";
 import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { timestamp } from "./timestamp";
+import { MideaErrorCodes } from "./enums/MideaErrorCodes";
 
 // STATUS ONLY OR POWER ON/OFF HEADER
 const ac_data_header = [
@@ -68,27 +69,31 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     });
     this.log = log;
     this.config = config;
-    api.on("didFinishLaunching", () => {
-      this.onReady();
+    api.on("didFinishLaunching", async () => {
+      try {
+        await this.login();
+        try {
+          await this.getDevices();
+        } catch (err) {
+          this.log.error("failed to get devices", err);
+        }
+        this.poll();
+      } catch (err) {
+        this.log.error("failed to log in", err);
+      }
     });
   }
 
-  async onReady() {
-    try {
-      await this.login();
-      this.log.debug("Login successful");
-      try {
-        await this.getUserList();
-        this.updateValues();
-      } catch (err) {
-        this.log.debug("getUserList failed");
-      }
-      this.updateInterval = setInterval(() => {
-        this.updateValues();
-      }, this.config["interval"] * 1000);
-    } catch (err) {
-      this.log.debug("Login failed");
-    }
+  private poll() {
+    this.updateValues()
+      .catch((err) => {
+        this.log.error(err);
+      })
+      .finally(() => {
+        setTimeout(() => {
+          this.poll();
+        }, 10 * 1000);
+      });
   }
 
   async apiRequest(url: string, data: Record<string, string>) {
@@ -105,6 +110,8 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   }
 
   async login() {
+    this.log.debug("Logging in...");
+
     const loginData = {
       clientType: Constants.ClientType,
       appId: Constants.AppId,
@@ -158,96 +165,87 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  async getUserList() {
-    this.log.debug("getUserList called");
-    try {
-      const response = await this.apiRequest("/appliance/user/list/get", {
-        sessionId: this.sessionId,
-      });
-      if (response.data.errorCode && response.data.errorCode !== "0") {
-        throw new Error(`getUserList returned error: ${response.data.msg}`);
-      }
-      if (!response.data.result?.list) {
-        throw new Error("getUserList invalid response");
-      }
-      response.data.result.list.forEach((currentElement) => {
-        if (parseInt(currentElement.type) !== MideaDeviceType.AirConditioner) {
-          this.log.warn(
-            `Device: ${currentElement.name} is of unsupported type: ${
-              MideaDeviceType[parseInt(currentElement.type)]
-            }`
-          );
-          return;
-        }
+  async getDevices() {
+    this.log.debug("fetching devices");
 
-        const uuid = this.api.hap.uuid.generate(currentElement.id);
-        const existingAccessory = this.accessories.find(
-          (accessory) => accessory.UUID === uuid
-        );
-        if (existingAccessory) {
-          this.log.debug(
-            "Restoring cached accessory",
-            existingAccessory.displayName
-          );
-          existingAccessory.context.deviceId = currentElement.id;
-          existingAccessory.context.deviceType = parseInt(currentElement.type);
-          existingAccessory.context.name = currentElement.name;
-          existingAccessory.context.userId = currentElement.userId;
-          existingAccessory.context.modelNumber = currentElement.modelNumber;
-          existingAccessory.context.sn = Utils.decryptAesString(
-            currentElement.sn,
-            this.dataKey
-          );
-          this.log.debug(
-            `Model Number:${existingAccessory.context.modelNumber}`
-          );
-          this.log.debug(`Serial Number:${existingAccessory.context.sn}`);
-
-          this.api.updatePlatformAccessories([existingAccessory]);
-
-          this.mideaAccessories.push(
-            new MideaAccessory(this, existingAccessory)
-          );
-        } else {
-          this.log.debug(`Adding new device: ${currentElement.name}`);
-          const accessory = new this.api.platformAccessory(
-            currentElement.name,
-            uuid
-          );
-          accessory.context.deviceId = currentElement.id;
-          accessory.context.deviceType = parseInt(currentElement.type);
-          accessory.context.name = currentElement.name;
-          accessory.context.userId = currentElement.userId;
-          accessory.context.modelNumber = currentElement.modelNumber;
-          accessory.context.sn = Utils.decryptAesString(
-            currentElement.sn,
-            this.dataKey
-          );
-          this.log.debug(`Model Number:${accessory.context.modelNumber}`);
-          this.log.debug(`Serial Number:${accessory.context.sn}`);
-
-          this.api.registerPlatformAccessories(
-            "homebridge-midea-air",
-            "midea-air",
-            [accessory]
-          );
-          this.mideaAccessories.push(new MideaAccessory(this, accessory));
-        }
-      });
-    } catch (err) {
-      this.log.debug(`getUserList error: ${err}`);
-      throw err;
+    const response = await this.apiRequest("/appliance/user/list/get", {
+      sessionId: this.sessionId,
+    });
+    if (response.data.errorCode && response.data.errorCode !== "0") {
+      throw new Error(`getUserList returned error: ${response.data.msg}`);
     }
+    if (!response.data.result?.list) {
+      throw new Error("getUserList invalid response");
+    }
+    response.data.result.list.forEach((currentElement) => {
+      if (parseInt(currentElement.type) !== MideaDeviceType.AirConditioner) {
+        this.log.warn(
+          `Device: ${currentElement.name} is of unsupported type: ${
+            MideaDeviceType[parseInt(currentElement.type)]
+          }`
+        );
+        return;
+      }
+
+      const uuid = this.api.hap.uuid.generate(currentElement.id);
+      const existingAccessory = this.accessories.find(
+        (accessory) => accessory.UUID === uuid
+      );
+      if (existingAccessory) {
+        this.log.debug(
+          "Restoring cached accessory",
+          existingAccessory.displayName
+        );
+        existingAccessory.context.deviceId = currentElement.id;
+        existingAccessory.context.deviceType = parseInt(currentElement.type);
+        existingAccessory.context.name = currentElement.name;
+        existingAccessory.context.userId = currentElement.userId;
+        existingAccessory.context.modelNumber = currentElement.modelNumber;
+        existingAccessory.context.sn = Utils.decryptAesString(
+          currentElement.sn,
+          this.dataKey
+        );
+        this.log.debug(`Model Number:${existingAccessory.context.modelNumber}`);
+        this.log.debug(`Serial Number:${existingAccessory.context.sn}`);
+
+        this.api.updatePlatformAccessories([existingAccessory]);
+
+        this.mideaAccessories.push(new MideaAccessory(this, existingAccessory));
+      } else {
+        this.log.debug(`Adding new device: ${currentElement.name}`);
+        const accessory = new this.api.platformAccessory(
+          currentElement.name,
+          uuid
+        );
+        accessory.context.deviceId = currentElement.id;
+        accessory.context.deviceType = parseInt(currentElement.type);
+        accessory.context.name = currentElement.name;
+        accessory.context.userId = currentElement.userId;
+        accessory.context.modelNumber = currentElement.modelNumber;
+        accessory.context.sn = Utils.decryptAesString(
+          currentElement.sn,
+          this.dataKey
+        );
+        this.log.debug(`Model Number:${accessory.context.modelNumber}`);
+        this.log.debug(`Serial Number:${accessory.context.sn}`);
+
+        this.api.registerPlatformAccessories(
+          "homebridge-midea-air",
+          "midea-air",
+          [accessory]
+        );
+        this.mideaAccessories.push(new MideaAccessory(this, accessory));
+      }
+    });
+    this.log.debug("done fetching devices");
   }
 
   async sendCommand(
     device: MideaAccessory,
     data: ReadonlyArray<number>,
-    intent: string
+    intent: string,
+    firstTry = true
   ) {
-    if (!device) {
-      throw new Error("no device specified");
-    }
     try {
       const response = await this.apiRequest("/appliance/transparent/send", {
         applianceId: device.deviceId,
@@ -256,115 +254,94 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         sessionId: this.sessionId,
       });
       if (response.data.errorCode && response.data.errorCode !== "0") {
-        this.log.warn(
+        switch (parseInt(response.data.errorCode)) {
+          case MideaErrorCodes.DeviceUnreachable:
+            // device is offline, don't error, since we can't do anything
+            this.log.warn(`${device.name} (${device.deviceId}) is offline`);
+            return;
+          case MideaErrorCodes.InvalidSession:
+            if (firstTry) {
+              this.log.debug(`Logged out, logging and and retrying, ${intent}`);
+              await this.login();
+              return this.sendCommand(device, data, intent, false);
+            }
+        }
+        throw new Error(
           `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
         );
-        return;
-      } else {
-        this.log.debug(
-          `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`
-        );
-        const applianceResponse = new ACApplianceResponse(
-          Utils.decode(
-            Utils.decryptAes(response.data.result.reply, this.dataKey)
-          )
-        );
-
-        device.targetTemperature = applianceResponse.targetTemperature;
-        device.indoorTemperature = applianceResponse.indoorTemperature;
-        device.outdoorTemperature = applianceResponse.outdoorTemperature;
-        device.swingMode = applianceResponse.swingMode;
-        device.useFahrenheit = applianceResponse.useFahrenheit;
-        device.turboFan = applianceResponse.turboFan;
-        device.ecoMode = applianceResponse.ecoMode;
-        device.turboMode = applianceResponse.turboMode;
-        device.comfortSleep = applianceResponse.comfortSleep;
-        device.dryer = applianceResponse.dryer;
-        device.purifier = applianceResponse.purifier;
-
-        this.log.debug(`Target Temperature: ${device.targetTemperature}˚C`);
-        this.log.debug(`Indoor Temperature: ${device.indoorTemperature}˚C`);
-        this.log.debug(`Outdoor Temperature: ${device.outdoorTemperature}˚C`);
-        this.log.debug(`Swing Mode set to: ${device.swingMode}`);
-        this.log.debug(`Fahrenheit set to: ${device.useFahrenheit}`);
-        this.log.debug(`Turbo Fan set to: ${device.turboFan}`);
-        this.log.debug(`Eco Mode set to: ${device.ecoMode}`);
-        this.log.debug(`Turbo Mode set to: ${device.turboMode}`);
-        this.log.debug(`Comfort Sleep set to: ${device.comfortSleep}`);
-        this.log.debug(`Dryer set to: ${device.dryer}`);
-        this.log.debug(`Purifier set to: ${device.purifier}`);
-
-        // Common
-        device.powerState = applianceResponse.powerState;
-        device.operationalMode = applianceResponse.operationalMode;
-        device.fanSpeed = applianceResponse.fanSpeed;
-
-        this.log.debug(`Power State set to: ${device.powerState}`);
-        this.log.debug(`Operational Mode set to: ${device.operationalMode}`);
-        this.log.debug(`Fan Speed set to: ${device.fanSpeed}`);
-
-        // this.log.debug(
-        //   `Full data: ${Utils.formatResponse(applianceResponse.data)}`
-        // );
       }
+
+      this.log.debug(
+        `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`
+      );
+      const applianceResponse = new ACApplianceResponse(
+        Utils.decode(Utils.decryptAes(response.data.result.reply, this.dataKey))
+      );
+
+      device.targetTemperature = applianceResponse.targetTemperature;
+      device.indoorTemperature = applianceResponse.indoorTemperature;
+      device.outdoorTemperature = applianceResponse.outdoorTemperature;
+      device.swingMode = applianceResponse.swingMode;
+      device.useFahrenheit = applianceResponse.useFahrenheit;
+      device.turboFan = applianceResponse.turboFan;
+      device.ecoMode = applianceResponse.ecoMode;
+      device.turboMode = applianceResponse.turboMode;
+      device.comfortSleep = applianceResponse.comfortSleep;
+      device.dryer = applianceResponse.dryer;
+      device.purifier = applianceResponse.purifier;
+
+      this.log.debug(`Target Temperature: ${device.targetTemperature}˚C`);
+      this.log.debug(`Indoor Temperature: ${device.indoorTemperature}˚C`);
+      this.log.debug(`Outdoor Temperature: ${device.outdoorTemperature}˚C`);
+      this.log.debug(`Swing Mode set to: ${device.swingMode}`);
+      this.log.debug(`Fahrenheit set to: ${device.useFahrenheit}`);
+      this.log.debug(`Turbo Fan set to: ${device.turboFan}`);
+      this.log.debug(`Eco Mode set to: ${device.ecoMode}`);
+      this.log.debug(`Turbo Mode set to: ${device.turboMode}`);
+      this.log.debug(`Comfort Sleep set to: ${device.comfortSleep}`);
+      this.log.debug(`Dryer set to: ${device.dryer}`);
+      this.log.debug(`Purifier set to: ${device.purifier}`);
+
+      // Common
+      device.powerState = applianceResponse.powerState;
+      device.operationalMode = applianceResponse.operationalMode;
+      device.fanSpeed = applianceResponse.fanSpeed;
+
+      this.log.debug(`Power State set to: ${device.powerState}`);
+      this.log.debug(`Operational Mode set to: ${device.operationalMode}`);
+      this.log.debug(`Fan Speed set to: ${device.fanSpeed}`);
+
+      // this.log.debug(
+      //   `Full data: ${Utils.formatResponse(applianceResponse.data)}`
+      // );
     } catch (err) {
       this.log.error(`SendCommand (${intent}) request failed: ${err}`);
       throw err;
     }
   }
 
-  updateValues() {
-    let data: number[] = [];
-
-    this.accessories.forEach(async (accessory: PlatformAccessory) => {
+  async updateValues() {
+    for (const accessory of this.accessories) {
       this.log.debug(
         `Updating accessory: ${accessory.context.name} (${accessory.context.deviceId})`
       );
       const mideaAccessory = this.mideaAccessories.find(
         (ma) => ma.deviceId === accessory.context.deviceId
       );
-      if (mideaAccessory === undefined) {
+      if (!mideaAccessory) {
         this.log.warn(
           `Could not find accessory with id: ${accessory.context.deviceId}`
         );
-      } else {
-        // Setup the data payload based on deviceType
-        data = ac_data_header.concat(Constants.UpdateCommand_AirCon);
-        this.log.debug(`[updateValues] Header + Command: ${data}`);
-        try {
-          await this.sendCommand(
-            mideaAccessory,
-            data,
-            "[updateValues] attempt 1/2"
-          );
-          this.log.debug(
-            `[updateValues] Send update command to: ${mideaAccessory.name} (${mideaAccessory.deviceId})`
-          );
-        } catch (err) {
-          // TODO: this should be handled only on invalidSession error. Also all the retry logic could be done better (Promise retry instead of await?)
-          this.log.warn(
-            `[updateValues] Error sending the command: ${err}. Trying to re-login before re-issuing command...`
-          );
-          try {
-            await this.login();
-            this.log.debug("[updateValues] Login successful!");
-            try {
-              await this.sendCommand(
-                mideaAccessory,
-                data,
-                "[updateValues] attempt 2/2"
-              );
-            } catch (err) {
-              this.log.error(
-                `[updateValues] sendCommand command still failed after retrying: ${err}`
-              );
-            }
-          } catch (err) {
-            this.log.error("[updateValues] re-login attempt failed");
-          }
-        }
+        return;
       }
-    });
+
+      // Setup the data payload based on deviceType
+      await this.sendCommand(
+        mideaAccessory,
+        ac_data_header.concat(Constants.UpdateCommand_AirCon),
+        "[updateValues]"
+      );
+    }
   }
 
   async sendUpdateToDevice(device: MideaAccessory) {
@@ -385,46 +362,11 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     this.log.debug(
       `[sendUpdateToDevice] Header + Command: ${JSON.stringify(data)}`
     );
-    try {
-      await this.sendCommand(device, data, "[sendUpdateToDevice] attempt 1/2");
-      this.log.debug(
-        `[sendUpdateToDevice] Send command to device: ${device.name} (${device.deviceId})`
-      );
-    } catch (err) {
-      this.log.warn(
-        `[sendUpdateToDevice] Error sending the command: ${err}. Trying to re-login before re-issuing command...`
-      );
-      this.log.debug(`[sendUpdateToDevice] Trying to re-login first`);
-      try {
-        await this.login();
-        this.log.debug("Login successful");
-        try {
-          await this.sendCommand(
-            device,
-            data,
-            "[sendUpdateToDevice] attempt 2/2"
-          );
-        } catch (err) {
-          this.log.error(
-            `[sendUpdateToDevice] Send command still failed after retrying: ${err}`
-          );
-        }
-      } catch (err) {
-        this.log.warn("[sendUpdateToDevice] re-login attempt failed");
-      }
-    }
-    //after sending, update because sometimes the api hangs
-    try {
-      this.log.debug(
-        "[sendUpdateToDevice] Fetching again the state of the device after setting new parameters..."
-      );
-      this.updateValues();
-    } catch (err) {
-      this.log.error(
-        `[sendUpdateToDevice] Something went wrong while fetching the state of the device after setting new paramenters: ${err}`
-      );
-      throw err;
-    }
+
+    await this.sendCommand(device, data, "[sendUpdateToDevice]");
+
+    // after sending, update because sometimes the api hangs
+    this.updateValues();
   }
 
   configureAccessory(accessory: PlatformAccessory) {

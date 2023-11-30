@@ -25,9 +25,6 @@ export class MideaAccessory {
   public fanOnlyMode: boolean = false;
   public swingMode: number = 0;
   public supportedSwingMode: MideaSwingMode = MideaSwingMode.Vertical;
-  public temperatureSteps: number = 1;
-  public minTemperature: number = 17;
-  public maxTemperature: number = 30;
   public ecoMode: boolean = false;
   public turboMode: boolean = false;
   public comfortSleep: boolean = false;
@@ -38,6 +35,7 @@ export class MideaAccessory {
   private heaterCoolerService!: Service;
   private fanService!: Service;
   private outdoorTemperatureService!: Service;
+  private ecoSwitchService!: Service;
 
   constructor(
     private readonly platform: MideaPlatform,
@@ -145,9 +143,9 @@ export class MideaAccessory {
         this.platform.Characteristic.CoolingThresholdTemperature
       )
       .setProps({
-        minValue: this.minTemperature,
-        maxValue: this.maxTemperature,
-        minStep: this.temperatureSteps,
+        // minValue: 16,
+        maxValue: 30,
+        minStep: 1,
       })
       .onGet(() => this.targetTemperature)
       .onSet((value) => {
@@ -215,11 +213,12 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.Active)
       .onGet(this.getFanActive.bind(this))
       .onSet((value) => {
+        this.platform.log.debug(`Triggered SET Fan Active To: ${value}`);
         if (value === this.platform.Characteristic.Active.ACTIVE) {
           this.powerState = true;
           this.operationalMode = ACOperationalMode.FanOnly;
         } else {
-          this.operationalMode = ACOperationalMode.Off;
+          this.powerState = false;
         }
         this.platform.sendUpdateToDevice(this);
       });
@@ -230,6 +229,7 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.TargetFanState)
       .onGet(this.getTargetFanState.bind(this))
       .onSet((value) => {
+        this.platform.log.debug(`Triggered SET TargetFanState To: ${value}`);
         if (value === this.platform.Characteristic.TargetFanState.AUTO) {
           this.fanSpeed = 102;
           this.platform.sendUpdateToDevice(this);
@@ -266,7 +266,6 @@ export class MideaAccessory {
         this.platform.sendUpdateToDevice(this);
       });
 
-    this.platform.log.debug("Add Outdoor Temperature Sensor");
     this.outdoorTemperatureService =
       this.accessory.getService(this.platform.Service.TemperatureSensor) ||
       this.accessory.addService(this.platform.Service.TemperatureSensor);
@@ -277,6 +276,24 @@ export class MideaAccessory {
     this.outdoorTemperatureService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .onGet(() => this.outdoorTemperature);
+
+    this.ecoSwitchService =
+      this.accessory.getService(this.platform.Service.Switch) ||
+      this.accessory.addService(this.platform.Service.Switch);
+    this.ecoSwitchService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      "Eco Mode"
+    );
+    this.ecoSwitchService
+      .getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => this.ecoMode)
+      .onSet((value) => {
+        if (typeof value !== "boolean") {
+          throw new Error("value not boolean");
+        }
+        this.ecoMode = value;
+        this.platform.sendUpdateToDevice(this);
+      });
 
     // Update HomeKit
     setInterval(() => {
@@ -336,6 +353,11 @@ export class MideaAccessory {
       this.fanService.updateCharacteristic(
         this.platform.Characteristic.SwingMode,
         this.getSwingMode()
+      );
+
+      this.ecoSwitchService.updateCharacteristic(
+        this.platform.Characteristic.On,
+        this.ecoMode
       );
 
       this.outdoorTemperatureService.updateCharacteristic(
