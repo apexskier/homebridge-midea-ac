@@ -25,6 +25,7 @@ import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { timestamp } from "./timestamp";
 import { MideaErrorCodes } from "./enums/MideaErrorCodes";
+import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
 
 // STATUS ONLY OR POWER ON/OFF HEADER
 const ac_data_header = [
@@ -229,11 +230,9 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.log.debug(`Model Number:${accessory.context.modelNumber}`);
         this.log.debug(`Serial Number:${accessory.context.sn}`);
 
-        this.api.registerPlatformAccessories(
-          "homebridge-midea-air",
-          "midea-air",
-          [accessory],
-        );
+        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+          accessory,
+        ]);
         this.mideaAccessories.push(new MideaAccessory(this, accessory));
       }
     });

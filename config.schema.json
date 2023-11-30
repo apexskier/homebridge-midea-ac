@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "midea-air",
+  "pluginAlias": "ApexskierHomebridgeMideaAc",
   "pluginType": "platform",
   "singular": true,
   "schema": {
