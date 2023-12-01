@@ -16,6 +16,7 @@ import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
 import { baseForm, getSign, getSignPassword } from "./Utils";
+import { timestamp } from "./timestamp";
 
 export class MideaPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -46,70 +47,27 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   async login() {
     this.log.debug("Logging in...");
 
-    let form: Record<string, string | number> = {
-      ...baseForm(),
-      loginAccount: this.config["user"],
-    };
-    let url = new URL("https://mapp.appsmb.com/v1/user/login/id/get");
-    form.sign = getSign(url.pathname, form, Constants.AppKey);
+    const { loginId } = (await this.apiRequest(
+      new URL("https://mapp.appsmb.com/v1/user/login/id/get"),
+      {
+        loginAccount: this.config["user"],
+      },
+    )) as { loginId: string };
 
-    let body = new FormData();
-    Object.entries(form).forEach(([k, v]) => {
-      body.append(k, v.toString());
-    });
-    let response = await fetch(url, {
-      method: "POST",
-      body,
-    });
-    if (!response.ok) {
-      throw new Error("login id response not ok");
-    }
-    if (response.status !== 200) {
-      throw new Error("unexpected login id status");
-    }
-    let responseBody = await response.json();
-    if (responseBody.errorCode !== "0") {
-      throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
-      );
-    }
-
-    const loginId = responseBody.result.loginId;
     const password = getSignPassword(
       loginId,
       this.config.password,
       Constants.AppKey,
     );
-    form = {
-      ...baseForm(),
-      loginAccount: this.config.user,
-      password,
-    };
-    url = new URL("https://mapp.appsmb.com/v1/user/login");
-    form.sign = getSign(url.pathname, form, Constants.AppKey);
+    const { sessionId } = (await this.apiRequest(
+      new URL("https://mapp.appsmb.com/v1/user/login"),
+      {
+        loginAccount: this.config.user,
+        password,
+      },
+    )) as { sessionId: string };
 
-    body = new FormData();
-    Object.entries(form).forEach(([k, v]) => {
-      body.append(k, v.toString());
-    });
-    response = await fetch(url, {
-      method: "POST",
-      body,
-    });
-    if (!response.ok) {
-      throw new Error("login response not ok");
-    }
-    if (response.status !== 200) {
-      throw new Error("unexpected getToken status");
-    }
-    responseBody = await response.json();
-    if (responseBody.errorCode !== "0") {
-      throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
-      );
-    }
-
-    this.sessionId = responseBody.result.sessionId;
+    this.sessionId = sessionId;
   }
 
   async getDevices() {
@@ -252,5 +210,52 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
     // add the restored accessory to the accessories cache so we can track if it has already been registered
     this.accessories.push(accessory);
+  }
+
+  async apiRequest(
+    url: URL,
+    params: Record<string, string | number>,
+  ): Promise<unknown> {
+    const form: Record<string, string | number> = {
+      appId: Constants.AppId,
+      clientType: Constants.ClientType,
+      format: Constants.RequestFormat,
+      language: Constants.Language,
+      src: Constants.RequestSource,
+      stamp: timestamp(),
+      ...params,
+    };
+
+    this.log.debug("apiRequest", url.pathname, form);
+
+    const sortedQueryString = Object.keys(form)
+      .sort()
+      .map((key) => `${key}=${form[key]}`)
+      .join("&");
+    const payload = url.pathname + sortedQueryString + Constants.AppKey;
+    form.sign = crypto.createHash("sha256").update(payload).digest("hex");
+
+    const body = new FormData();
+    Object.entries(form).forEach(([k, v]) => {
+      body.append(k, v.toString());
+    });
+    const response = await fetch(url, {
+      method: "POST",
+      body,
+    });
+    if (!response.ok) {
+      throw new Error(`response not ok: ${url.pathname}`);
+    }
+    if (response.status !== 200) {
+      throw new Error(`status ${response.status}: ${url.pathname}`);
+    }
+    const responseBody = await response.json();
+    if (responseBody.errorCode !== "0") {
+      throw new Error(
+        `error: ${url.pathname}: ${responseBody.errorCode}, ${responseBody.msg}`,
+      );
+    }
+
+    return responseBody.result;
   }
 }
