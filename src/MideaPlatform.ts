@@ -15,7 +15,6 @@ import * as Constants from "./Constants";
 import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
-import { baseForm, getSign, getSignPassword } from "./Utils";
 import { timestamp } from "./timestamp";
 
 export class MideaPlatform implements DynamicPlatformPlugin {
@@ -54,11 +53,14 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       },
     )) as { loginId: string };
 
-    const password = getSignPassword(
-      loginId,
-      this.config.password,
-      Constants.AppKey,
-    );
+    const hashedPassword = crypto
+      .createHash("sha256")
+      .update(this.config.password)
+      .digest("hex");
+    const password = crypto
+      .createHash("sha256")
+      .update(loginId + hashedPassword + Constants.AppKey)
+      .digest("hex");
     const { sessionId } = (await this.apiRequest(
       new URL("https://mapp.appsmb.com/v1/user/login"),
       {
@@ -172,38 +174,15 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   }
 
   async getDeviceToken(udpid: string) {
-    const form: Record<string, string | number> = {
-      ...baseForm(),
-      udpid,
-      sessionId: this.sessionId,
-    };
-    this.log.debug(`Getting token for ${udpid}`, form);
-    const url = new URL("https://mapp.appsmb.com/v1/iot/secure/getToken");
-    form.sign = getSign(url.pathname, form, Constants.AppKey);
-    const body = new FormData();
-    Object.entries(form).forEach(([k, v]) => {
-      body.append(k, v.toString());
-    });
-    const response = await fetch(url, {
-      method: "POST",
-      body,
-    });
-    if (!response.ok) {
-      throw new Error("getToken response not ok");
-    }
-    if (response.status !== 200) {
-      throw new Error("unexpected getToken status");
-    }
-    const responseBody = await response.json();
-    if (responseBody.errorCode && parseInt(responseBody.errorCode)) {
-      throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
-      );
-    }
-    const { token, key } = responseBody.result.tokenlist.find(
-      ({ udpId }) => udpId === udpid,
-    );
-    return { token, key };
+    const { tokenlist } = (await this.apiRequest(
+      new URL("https://mapp.appsmb.com/v1/iot/secure/getToken"),
+      {
+        udpid,
+        sessionId: this.sessionId,
+      },
+    )) as { tokenlist: { udpId: string; token: string; key: string }[] };
+
+    return tokenlist.find(({ udpId }) => udpId === udpid)!;
   }
 
   configureAccessory(accessory: PlatformAccessory) {
@@ -226,8 +205,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       ...params,
     };
 
-    this.log.debug("apiRequest", url.pathname, form);
-
     const sortedQueryString = Object.keys(form)
       .sort()
       .map((key) => `${key}=${form[key]}`)
@@ -239,6 +216,8 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     Object.entries(form).forEach(([k, v]) => {
       body.append(k, v.toString());
     });
+
+    this.log.debug("apiRequest", url.pathname);
     const response = await fetch(url, {
       method: "POST",
       body,
@@ -250,7 +229,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       throw new Error(`status ${response.status}: ${url.pathname}`);
     }
     const responseBody = await response.json();
-    if (responseBody.errorCode !== "0") {
+    if (parseInt(responseBody.errorCode)) {
       throw new Error(
         `error: ${url.pathname}: ${responseBody.errorCode}, ${responseBody.msg}`,
       );
