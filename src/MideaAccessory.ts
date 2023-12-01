@@ -261,9 +261,8 @@ class LANDevice {
     return packets;
   }
 
+  // ensure requests are serialized, to prevent data coming in for a prior request
   private _pendingRequest: Promise<Buffer> | null = null;
-  private _queuedRequests: Array<Uint8Array> = [];
-
   async request(message: Uint8Array) {
     if (this._pendingRequest) {
       this._pendingRequest = this._pendingRequest.then(() =>
@@ -421,10 +420,8 @@ export class MideaAccessory {
       .onGet(this.getHeaterCoolerActive.bind(this))
       .onSet((value: CharacteristicValue) => {
         this.platform.log.debug(`Triggered SET Active To: ${value}`);
-        const targetPowerState =
-          value === this.platform.Characteristic.Active.ACTIVE;
         this.sendUpdateToDevice((cmd) => {
-          cmd.running = targetPowerState;
+          cmd.running = value === this.platform.Characteristic.Active.ACTIVE;
           if (cmd.mode === ACOperationalMode.FanOnly) {
             cmd.mode = ACOperationalMode.Auto;
           }
@@ -640,8 +637,8 @@ export class MideaAccessory {
     this.authenticated = true;
   }
 
+  // deduplicate status updates
   private _pendingUpdateStatus: Promise<void> | null = null;
-
   updateStatus() {
     if (this._pendingUpdateStatus) {
       return this._pendingUpdateStatus;
@@ -744,7 +741,24 @@ export class MideaAccessory {
     }
   }
 
+  // debounce sent updates
+  private pendingUpdates: Array<(cmd: AirConditionerSetCommand) => void> = [];
+  private pendingUpdateInterval: NodeJS.Timer | null = null;
   async sendUpdateToDevice(update: (cmd: AirConditionerSetCommand) => void) {
+    this.pendingUpdates.push(update);
+
+    if (this.pendingUpdateInterval) {
+      clearTimeout(this.pendingUpdateInterval);
+    }
+    this.pendingUpdateInterval = setTimeout(() => {
+      this._sendUpdateToDevice((cmd) =>
+        this.pendingUpdates.forEach((pendingUpdate) => pendingUpdate(cmd)),
+      );
+      this.pendingUpdates = [];
+    }, 50);
+  }
+
+  async _sendUpdateToDevice(update: (cmd: AirConditionerSetCommand) => void) {
     if (!this.status) {
       return;
     }
