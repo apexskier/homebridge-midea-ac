@@ -32,8 +32,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
-    this.log = log;
-    this.config = config;
     api.on("didFinishLaunching", async () => {
       await this.login();
       await this.getDevices();
