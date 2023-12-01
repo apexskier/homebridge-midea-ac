@@ -432,13 +432,6 @@ export class MideaAccessory {
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
-      .setProps({
-        validValues: [
-          this.platform.Characteristic.CurrentHeaterCoolerState.IDLE,
-          this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE,
-          this.platform.Characteristic.CurrentHeaterCoolerState.COOLING,
-        ],
-      })
       .onGet(this.getCurrentHeaterCoolerState.bind(this));
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
@@ -498,7 +491,7 @@ export class MideaAccessory {
       .setProps({
         minValue: AC_MIN_TEMPERATURE,
         maxValue: AC_MAX_TEMPERATURE,
-        minStep: 1,
+        minStep: 0.5,
       })
       .onGet(() => {
         if (this.status === null) {
@@ -581,11 +574,6 @@ export class MideaAccessory {
       .onSet(this.setSwingMode.bind(this));
     this.fanService
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      // .setProps({
-      //   minValue: 0,
-      //   maxValue: 100,
-      //   minStep: 20,
-      // })
       .onGet(this.getRotationSpeed.bind(this))
       .onSet((value) => {
         this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
