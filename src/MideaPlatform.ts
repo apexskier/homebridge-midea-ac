@@ -303,13 +303,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   //   }
   // }
 
-  async sendUpdateToDevice(device: MideaAccessory) {
-    // TODO
-
-    // after sending, update because sometimes the api hangs
-    device.updateStatus();
-  }
-
   async getDeviceToken(udpid: string) {
     const form: Record<string, string | number> = {
       ...baseForm(),

@@ -8,12 +8,19 @@ import type {
 } from "homebridge";
 import { MideaPlatform } from "./MideaPlatform";
 import { ACOperationalMode } from "./enums/ACOperationalMode";
-import { AirConditionerStatusCommand, createLanCommand } from "./BaseCommand";
 import {
+  AirConditionerSetCommand,
+  AirConditionerStatusCommand,
+  createLanCommand,
+} from "./BaseCommand";
+import {
+  AC_MAX_TEMPERATURE,
+  AC_MIN_TEMPERATURE,
   ENCRYPTED_MESSAGE_TYPES,
   HDR_8370,
   MessageType,
   encodeKey,
+  errorData,
   iv,
   signKey,
 } from "./Constants";
@@ -205,18 +212,26 @@ class LANDevice {
   security = new Security();
   client = new net.Socket();
 
-  private connected: Promise<void>;
+  private connected!: Promise<void>;
 
   constructor(
     private readonly address: string,
     private readonly port: number,
     private readonly log: Logger
   ) {
-    this.client.on("error", (err) => {
-      this.log.error("landevice error", err);
+    this.client.setKeepAlive(true);
+    this.client.on("close", () => {
+      this.log.debug("landevice close");
+      this.connect();
     });
+    this.connect();
+  }
+
+  connect() {
+    this.log.debug("connecting");
     this.connected = new Promise((resolve) => {
-      this.client.connect(port, address, () => {
+      this.client.connect(this.port, this.address, () => {
+        this.log.debug("connected");
         resolve();
       });
     });
@@ -226,6 +241,11 @@ class LANDevice {
     const response = await this.request(
       this.security.encode8370(data, MessageType.ENCRYPTED_REQUEST)
     );
+
+    if (response.subarray(8, 13).equals(errorData)) {
+      throw new Error("request error");
+    }
+
     const responses = this.security.decode8370(response);
     const packets: Array<Buffer> = [];
     responses.forEach((response) => {
@@ -254,11 +274,17 @@ class LANDevice {
       });
     });
 
-    return await new Promise<Buffer>((resolve) => {
+    return await new Promise<Buffer>((resolve, reject) => {
+      const handleError = (err: Error) => {
+        this.log.error("landevice error", err);
+        reject(err);
+      };
       const receive = (data: Buffer) => {
         this.client.off("data", receive);
+        this.client.off("error", handleError);
         resolve(data);
       };
+      this.client.on("error", handleError);
       this.client.on("data", receive);
     });
   }
@@ -273,7 +299,7 @@ class LANDevice {
     );
     const response = (await this.request(data)).subarray(8, 72);
 
-    if (Buffer.from(new TextEncoder().encode("ERROR")).equals(response)) {
+    if (response.equals(errorData)) {
       throw new Error("handshake failed");
     }
 
@@ -306,28 +332,6 @@ function strxor(plain_text: Buffer, key: Buffer) {
 }
 
 export class MideaAccessory {
-  // // Common
-  // public powerState: boolean = false;
-  // public audibleFeedback: boolean = true;
-  // public operationalMode: ACOperationalMode = ACOperationalMode.Off;
-  // public fanSpeed: number = 0;
-
-  // // Air Conditioner
-  // public targetTemperature: number = 24;
-  // public indoorTemperature: number = 0;
-  // public outdoorTemperature: number = 0;
-  // public useFahrenheit: boolean = false; // Default unit is Celsius. this is just to control the temperature unit of the AC's display. The target temperature setter always expects a celsius temperature (resolution of 0.5C), as does the midea API
-  // public turboFan: boolean = false;
-  // public fanOnlyMode: boolean = false;
-  // public swingMode: number = 0;
-  // public supportedSwingMode: MideaSwingMode = MideaSwingMode.Vertical;
-  // public ecoMode: boolean = false;
-  // public turboMode: boolean = false;
-  // public comfortSleep: boolean = false;
-  // public dryer: boolean = false;
-  // public purifier: boolean = false;
-  // public screenDisplay: boolean = true;
-
   public status: null | ReturnType<typeof parseACStatus> = null;
 
   private device: LANDevice;
@@ -335,7 +339,29 @@ export class MideaAccessory {
   private heaterCoolerService!: Service;
   private fanService!: Service;
   private outdoorTemperatureService!: Service;
-  private ecoSwitchService!: Service;
+  authenticated: boolean = false;
+
+  createSetCommand() {
+    if (!this.status) {
+      throw new Error("not ready");
+    }
+
+    const cmd = new AirConditionerSetCommand();
+    cmd.comfort_sleep = this.status.comfort_sleep;
+    cmd.dryer = this.status.dryer;
+    cmd.eco_mode = this.status.eco;
+    cmd.fahrenheit = this.status.fahrenheit;
+    cmd.fan_speed = this.status.fan_speed;
+    cmd.horizontal_swing = this.status.horizontal_swing;
+    cmd.mode = this.status.mode;
+    cmd.purifier = this.status.purifier;
+    cmd.running = this.status.run_status;
+    cmd.temperature = this.status.target_temperature;
+    cmd.turbo = this.status.turbo;
+    cmd.turbo_fan = this.status.turbo_fan;
+    cmd.vertical_swing = this.status.vertical_swing;
+    return cmd;
+  }
 
   constructor(
     private readonly platform: MideaPlatform,
@@ -346,14 +372,6 @@ export class MideaAccessory {
       this.accessory.context.port,
       this.platform.log
     );
-
-    const udpid = convertUDPId(
-      this.accessory.context.deviceIdBytes.toReversed()
-    );
-    this.platform.getDeviceToken(udpid).then(async ({ token, key }) => {
-      await this.device.authenticate(token, key);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
 
     this.platform.log.info(
       `Creating device: ${this.accessory.context.deviceIdBytes.toString("hex")}`
@@ -366,15 +384,15 @@ export class MideaAccessory {
         this.platform.Characteristic.FirmwareRevision,
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         require("../package.json").version
+      )
+      // .setCharacteristic(
+      //   this.platform.Characteristic.Model,
+      //   this.accessory.context.modelNumber
+      // )
+      .setCharacteristic(
+        this.platform.Characteristic.SerialNumber,
+        this.accessory.context.sn
       );
-    // .setCharacteristic(
-    //   this.platform.Characteristic.Model,
-    //   this.accessory.context.modelNumber
-    // )
-    // .setCharacteristic(
-    //   this.platform.Characteristic.SerialNumber,
-    //   this.accessory.context.sn
-    // );
 
     // Air Conditioner
     this.heaterCoolerService =
@@ -388,18 +406,15 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.Active)
       .onGet(() => this.getHeaterCoolerActive())
       .onSet((value: CharacteristicValue) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
         this.platform.log.debug(`Triggered SET Active To: ${value}`);
         const targetPowerState =
           value === this.platform.Characteristic.Active.ACTIVE;
-        if (this.status.run_status !== targetPowerState) {
-          this.status.run_status = targetPowerState;
-          this.platform.sendUpdateToDevice(this);
+        const cmd = this.createSetCommand();
+        cmd.running = targetPowerState;
+        if (cmd.mode === ACOperationalMode.FanOnly) {
+          cmd.mode = ACOperationalMode.Auto;
         }
+        this.sendUpdateToDevice(cmd);
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
@@ -421,38 +436,29 @@ export class MideaAccessory {
       })
       .onGet(() => this.getTargetHeaterCoolerState())
       .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
         this.platform.log.debug(
           `Triggered SET HeaterCooler State To: ${value}`
         );
         if (this.getTargetHeaterCoolerState() !== value) {
+          const cmd = this.createSetCommand();
           switch (value) {
             case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
-              this.status.mode = ACOperationalMode.Auto;
+              cmd.mode = ACOperationalMode.Auto;
               break;
             case this.platform.Characteristic.TargetHeaterCoolerState.COOL:
-              this.status.mode = ACOperationalMode.Cooling;
+              cmd.mode = ACOperationalMode.Cooling;
               break;
             case this.platform.Characteristic.TargetHeaterCoolerState.HEAT:
-              this.status.mode = ACOperationalMode.Heating;
+              cmd.mode = ACOperationalMode.Heating;
               break;
             default:
               throw new Error(`unknown target heater cooler state: ${value}`);
           }
-          this.platform.sendUpdateToDevice(this);
+          this.sendUpdateToDevice(cmd);
         }
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .setProps({
-        minValue: -100,
-        maxValue: 100,
-        minStep: 0.1,
-      })
       .onGet(() => {
         if (this.status === null) {
           throw new this.platform.api.hap.HapStatusError(
@@ -466,8 +472,8 @@ export class MideaAccessory {
         this.platform.Characteristic.CoolingThresholdTemperature
       )
       .setProps({
-        // minValue: 16,
-        maxValue: 30,
+        // minValue: AC_MIN_TEMPERATURE,
+        maxValue: AC_MAX_TEMPERATURE,
         minStep: 1,
       })
       .onGet(() => {
@@ -476,21 +482,15 @@ export class MideaAccessory {
             this.platform.api.hap.HAPStatus.RESOURCE_BUSY
           );
         }
-        return this.status.indoor_temperature;
+        return this.status.target_temperature;
       })
       .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
         this.platform.log.debug(
           `Triggered SET ThresholdTemperature To: ${value}˚C`
         );
-        if (this.status.target_temperature !== Number(value)) {
-          this.status.target_temperature = Number(value);
-          this.platform.sendUpdateToDevice(this);
-        }
+        const cmd = this.createSetCommand();
+        cmd.temperature = Number(value);
+        this.sendUpdateToDevice(cmd);
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.SwingMode)
@@ -512,38 +512,10 @@ export class MideaAccessory {
         const valueIsFahrenheit =
           value ===
           this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
-        if (this.status.fahrenheit !== valueIsFahrenheit) {
-          this.status.fahrenheit = valueIsFahrenheit;
-          this.platform.sendUpdateToDevice(this);
-        }
+        const cmd = this.createSetCommand();
+        cmd.fahrenheit = valueIsFahrenheit;
+        this.sendUpdateToDevice(cmd);
       });
-
-    // // Use to control Screen display
-    // this.heaterCoolerService
-    //   .getCharacteristic(this.platform.Characteristic.LockPhysicalControls)
-    //   .onGet(() =>
-    //     this.screenDisplay
-    //       ? this.platform.Characteristic.LockPhysicalControls
-    //           .CONTROL_LOCK_DISABLED
-    //       : this.platform.Characteristic.LockPhysicalControls
-    //           .CONTROL_LOCK_ENABLED
-    //   )
-    //   .onSet((value) => {
-    //     this.platform.log.debug(`Triggered SET Screen Display To: ${value}`);
-    //     const valueIsUnlocked =
-    //       value ===
-    //       this.platform.Characteristic.LockPhysicalControls
-    //         .CONTROL_LOCK_DISABLED;
-    //     if (this.screenDisplay !== valueIsUnlocked) {
-    //       this.screenDisplay = valueIsUnlocked;
-    //       this.platform.sendUpdateToDevice(this);
-    //     }
-    //   });
 
     this.fanService =
       this.accessory.getService(this.platform.Service.Fanv2) ||
@@ -553,20 +525,15 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.Active)
       .onGet(this.getFanActive.bind(this))
       .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
-
         this.platform.log.debug(`Triggered SET Fan Active To: ${value}`);
+        const cmd = this.createSetCommand();
         if (value === this.platform.Characteristic.Active.ACTIVE) {
-          this.status.run_status = true;
-          this.status.mode = ACOperationalMode.FanOnly;
+          cmd.running = true;
+          cmd.mode = ACOperationalMode.FanOnly;
         } else {
-          this.status.run_status = false;
+          cmd.running = false;
         }
-        this.platform.sendUpdateToDevice(this);
+        this.sendUpdateToDevice(cmd);
       });
     this.fanService
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
@@ -575,15 +542,11 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.TargetFanState)
       .onGet(this.getTargetFanState.bind(this))
       .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
         this.platform.log.debug(`Triggered SET TargetFanState To: ${value}`);
         if (value === this.platform.Characteristic.TargetFanState.AUTO) {
-          this.status.fan_speed = 102;
-          this.platform.sendUpdateToDevice(this);
+          const cmd = this.createSetCommand();
+          cmd.fan_speed = 102;
+          this.sendUpdateToDevice(cmd);
         }
       });
     this.fanService
@@ -592,35 +555,35 @@ export class MideaAccessory {
       .onSet(this.setSwingMode.bind(this));
     this.fanService
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
+      // .setProps({
+      //   minValue: 0,
+      //   maxValue: 100,
+      //   minStep: 20,
+      // })
       .onGet(this.getRotationSpeed.bind(this))
       .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
-
         this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
         if (typeof value !== "number") {
           throw new Error("value not number");
         }
+        const cmd = this.createSetCommand();
         // transform values in percent
         // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
         if (value === 0) {
-          this.status.fan_speed = 102;
-          this.status.mode = ACOperationalMode.Off;
+          cmd.fan_speed = 102;
+          cmd.mode = ACOperationalMode.Off;
         } else if (value <= 20) {
-          this.status.fan_speed = 20;
+          cmd.fan_speed = 20;
         } else if (value > 20 && value <= 40) {
-          this.status.fan_speed = 40;
+          cmd.fan_speed = 40;
         } else if (value > 40 && value <= 60) {
-          this.status.fan_speed = 60;
+          cmd.fan_speed = 60;
         } else if (value > 60 && value <= 80) {
-          this.status.fan_speed = 80;
+          cmd.fan_speed = 80;
         } else {
-          this.status.fan_speed = 100;
+          cmd.fan_speed = 100;
         }
-        this.platform.sendUpdateToDevice(this);
+        this.sendUpdateToDevice(cmd);
       });
 
     this.outdoorTemperatureService =
@@ -642,52 +605,32 @@ export class MideaAccessory {
       });
     // TODO: set a fault on this if the AC is offline
 
-    this.ecoSwitchService =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch);
-    this.ecoSwitchService.setCharacteristic(
-      this.platform.Characteristic.Name,
-      "Eco Mode"
-    );
-    this.ecoSwitchService
-      .getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
-        return this.status.eco;
-      })
-      .onSet((value) => {
-        if (this.status === null) {
-          throw new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-          );
-        }
-        if (typeof value !== "boolean") {
-          throw new Error("value not boolean");
-        }
-        this.status.eco = value;
-        this.platform.sendUpdateToDevice(this);
-      });
-
     this.poll();
   }
 
   private poll() {
     this.updateStatus()
       .catch((err) => {
-        this.platform.log.error(err);
+        this.platform.log.error("update status error", err);
       })
-      .finally(() => {
-        setTimeout(() => {
-          this.poll();
-        }, 10 * 1000);
-      });
+      .then(() => setTimeout(this.poll.bind(this), 10 * 1000));
+  }
+
+  async authenticate() {
+    const udpid = convertUDPId(
+      this.accessory.context.deviceIdBytes.toReversed()
+    );
+    const { token, key } = await this.platform.getDeviceToken(udpid);
+    await this.device.authenticate(token, key);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    this.authenticated = true;
   }
 
   async updateStatus() {
+    if (!this.authenticated) {
+      await this.authenticate();
+    }
+
     this.platform.log.debug("requesting status");
     const cmd = new AirConditionerStatusCommand();
     const lanPacket = createLanCommand(
@@ -695,7 +638,16 @@ export class MideaAccessory {
       cmd,
       signKey
     );
-    const statusResp = await this.device.request8370(lanPacket);
+
+    let statusResp: Buffer[];
+    try {
+      statusResp = await this.device.request8370(lanPacket);
+    } catch (err) {
+      this.platform.log.error("request status error", err);
+      this.authenticated = false;
+      return;
+    }
+
     const selected = statusResp[0];
     if (selected.length < 10) {
       throw new Error("Invalid extended response");
@@ -736,14 +688,6 @@ export class MideaAccessory {
       this.platform.Characteristic.TemperatureDisplayUnits,
       this.getTemperatureDisplayUnits()
     );
-    //   this.heaterCoolerService.updateCharacteristic(
-    //     this.platform.Characteristic.LockPhysicalControls,
-    //     this.screenDisplay
-    //       ? this.platform.Characteristic.LockPhysicalControls
-    //           .CONTROL_LOCK_DISABLED
-    //       : this.platform.Characteristic.LockPhysicalControls
-    //           .CONTROL_LOCK_ENABLED
-    //   );
 
     this.fanService.updateCharacteristic(
       this.platform.Characteristic.Active,
@@ -766,16 +710,40 @@ export class MideaAccessory {
       this.getSwingMode()
     );
 
-    this.ecoSwitchService.updateCharacteristic(
-      this.platform.Characteristic.On,
-      this.status.eco
-    );
-
     if (this.status.outdoor_temperature !== null) {
       this.outdoorTemperatureService.updateCharacteristic(
         this.platform.Characteristic.CurrentTemperature,
         this.status.outdoor_temperature
       );
+    }
+  }
+
+  async sendUpdateToDevice(cmd: AirConditionerSetCommand) {
+    if (!this.status) {
+      return;
+    }
+
+    this.platform.log.debug("sending update to device", JSON.stringify(cmd));
+
+    cmd.screen = true;
+
+    const lanPacket = createLanCommand(
+      this.accessory.context.deviceIdBytes,
+      cmd,
+      signKey
+    );
+    try {
+      await this.device.request8370(lanPacket);
+    } catch (err) {
+      this.platform.log.error("send update to device error", err);
+      return;
+    }
+
+    try {
+      return this.updateStatus();
+    } catch (err) {
+      this.platform.log.error("update after set error", err);
+      return;
     }
   }
 
@@ -789,7 +757,8 @@ export class MideaAccessory {
         this.platform.api.hap.HAPStatus.RESOURCE_BUSY
       );
     }
-    return this.status.run_status
+    return this.status.run_status &&
+      this.status.mode !== ACOperationalMode.FanOnly
       ? this.platform.Characteristic.Active.ACTIVE
       : this.platform.Characteristic.Active.INACTIVE;
   }
@@ -887,17 +856,11 @@ export class MideaAccessory {
   }
 
   setSwingMode(value: CharacteristicValue) {
-    if (this.status === null) {
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.RESOURCE_BUSY
-      );
-    }
     this.platform.log.debug(`Triggered SET SwingMode To: ${value}`);
+    const cmd = this.createSetCommand();
     // convert this.swingMode to a 0/1
-    if (this.status.vertical_swing !== value) {
-      this.status.vertical_swing = value ? 1 : 0;
-      this.platform.sendUpdateToDevice(this);
-    }
+    cmd.vertical_swing = value ? 1 : 0;
+    this.sendUpdateToDevice(cmd);
   }
 
   getSwingMode() {

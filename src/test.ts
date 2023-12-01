@@ -4,7 +4,9 @@ import net from "net";
 import dgram from "node:dgram";
 import { getSign, getSignPassword } from "./Utils";
 import {
+  AirConditionerSetCommand,
   AirConditionerStatusCommand,
+  BaseCommand,
   DeviceCapabilitiesCommand,
   createLanCommand,
 } from "./BaseCommand";
@@ -237,18 +239,19 @@ server.on("message", async (data, rinfo) => {
   await device.authenticate(token, key);
   await new Promise((resolve) => setTimeout(resolve, 500));
 
-  const refreshResp = await device.request8370(
-    createLanCommand(
-      deviceIdBytes,
-      new DeviceCapabilitiesCommand(type),
-      signKey
-    )
-  );
+  // const refreshResp = await device.request8370(
+  //   createLanCommand(
+  //     deviceIdBytes,
+  //     new DeviceCapabilitiesCommand(type),
+  //     signKey
+  //   )
+  // );
 
-  const cmd = new AirConditionerStatusCommand();
-  const lanPacket = createLanCommand(deviceIdBytes, cmd, signKey);
-  const statusResp = await device.request8370(lanPacket);
-  const selected = statusResp[0];
+  const cmd: BaseCommand = new AirConditionerStatusCommand();
+
+  let lanPacket = createLanCommand(deviceIdBytes, cmd, signKey);
+  let statusResp = await device.request8370(lanPacket);
+  let selected = statusResp[0];
   if (selected.length < 10) {
     throw new Error("Invalid extended response");
   }
@@ -256,6 +259,19 @@ server.on("message", async (data, rinfo) => {
     throw new Error("Unknown extended response");
   }
   const status = parseACStatus(selected.subarray(10));
+
+  const setCmd = new AirConditionerSetCommand();
+  setCmd.temperature = 25;
+
+  lanPacket = createLanCommand(deviceIdBytes, setCmd, signKey);
+  statusResp = await device.request8370(lanPacket);
+  selected = statusResp[0];
+  if (selected.length < 10) {
+    throw new Error("Invalid extended response");
+  }
+  if (![2, 3, 4, 5].includes(selected[9])) {
+    throw new Error("Unknown extended response");
+  }
 });
 
 function parseACStatus(data: Buffer) {

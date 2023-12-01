@@ -24,6 +24,8 @@ export const signKey = new TextEncoder().encode(
 );
 export const encodeKey = crypto.createHash("md5").update(signKey).digest();
 
+export const errorData = Buffer.from(new TextEncoder().encode("ERROR"));
+
 export enum MessageType {
   HANDSHAKE_REQUEST = 0x0,
   HANDSHAKE_RESPONSE = 0x1,
@@ -35,3 +37,6 @@ export const ENCRYPTED_MESSAGE_TYPES = [
   MessageType.ENCRYPTED_RESPONSE,
   MessageType.ENCRYPTED_REQUEST,
 ];
+
+export const AC_MIN_TEMPERATURE = 16;
+export const AC_MAX_TEMPERATURE = 31;
