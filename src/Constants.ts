@@ -20,7 +20,7 @@ export const DISCOVERY_MSG = new Uint8Array([
 ]);
 
 export const signKey = new TextEncoder().encode(
-  "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S"
+  "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S",
 );
 export const encodeKey = crypto.createHash("md5").update(signKey).digest();
 

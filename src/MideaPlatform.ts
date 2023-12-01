@@ -33,7 +33,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
-    public readonly api: API
+    public readonly api: API,
   ) {
     this.log = log;
     this.config = config;
@@ -70,7 +70,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     let responseBody = await response.json();
     if (responseBody.errorCode !== "0") {
       throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`
+        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
       );
     }
 
@@ -78,7 +78,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     const password = getSignPassword(
       loginId,
       this.config.password,
-      Constants.AppKey
+      Constants.AppKey,
     );
     form = {
       ...baseForm(),
@@ -105,7 +105,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     responseBody = await response.json();
     if (responseBody.errorCode !== "0") {
       throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`
+        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
       );
     }
 
@@ -120,7 +120,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     server.on("listening", () => {
       const address = server.address();
       this.log.debug(
-        `discovery server listening ${address.address}:${address.port}`
+        `discovery server listening ${address.address}:${address.port}`,
       );
       server.send(Constants.DISCOVERY_MSG, 6445, "255.255.255.255");
     });
@@ -141,7 +141,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       const decipher = crypto.createDecipheriv(
         "aes-128-ecb",
         Constants.encodeKey,
-        ""
+        "",
       );
       const decodedReply = decipher.update(data.subarray(40, -16));
 
@@ -170,19 +170,19 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.log.warn(
           `Device ${deviceIdBytes.toString("hex")} is of unsupported type: ${
             MideaDeviceType[type]
-          }`
+          }`,
         );
         return;
       }
 
       const uuid = this.api.hap.uuid.generate(deviceIdBytes);
       const existingAccessory = this.accessories.find(
-        (accessory) => accessory.UUID === uuid
+        (accessory) => accessory.UUID === uuid,
       );
       if (existingAccessory) {
         this.log.debug(
           "Restoring cached accessory",
-          existingAccessory.displayName
+          existingAccessory.displayName,
         );
         existingAccessory.context.deviceIdBytes = deviceIdBytes;
         existingAccessory.context.deviceType = type;
@@ -328,11 +328,11 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     const responseBody = await response.json();
     if (responseBody.errorCode && parseInt(responseBody.errorCode)) {
       throw new Error(
-        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`
+        `getToken error: ${responseBody.errorCode}, ${responseBody.msg}`,
       );
     }
     const { token, key } = responseBody.result.tokenlist.find(
-      ({ udpId }) => udpId === udpid
+      ({ udpId }) => udpId === udpid,
     );
     return { token, key };
   }

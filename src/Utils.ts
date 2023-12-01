@@ -44,7 +44,7 @@ export function getStamp(): string {
 export function getSign(
   path: string,
   form: Record<string, string | number | boolean>,
-  appKey: string
+  appKey: string,
 ) {
   if (path === "") {
     throw new Error("path required");
@@ -105,7 +105,7 @@ export function encryptAes(query: number[] | Buffer, dataKey: string) {
 export function getSignPassword(
   loginId: string,
   password: string,
-  appKey: string
+  appKey: string,
 ) {
   if (!loginId) {
     throw new Error("loginId required");
@@ -130,7 +130,7 @@ export function generateDataKey(accessToken: string, appKey: string) {
   const decipher = crypto.createDecipheriv(
     "aes-128-ecb",
     md5AppKey.slice(0, 16),
-    ""
+    "",
   );
   return decipher.update(accessToken, "hex", "utf8");
 }

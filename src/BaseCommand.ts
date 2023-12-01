@@ -11,7 +11,7 @@ export abstract class BaseCommand {
   finalize() {
     // Add the CRC8
     this.data[this.data.length - 2] = crc8.calculate(
-      this.data.subarray(10, -2)
+      this.data.subarray(10, -2),
     );
     // Add message check code
     this.data[this.data.length - 1] =
@@ -39,7 +39,7 @@ export class DeviceCapabilitiesCommand extends BaseCommand {
         0x00,
         0x00,
         0x00,
-      ])
+      ]),
     );
   }
 }
@@ -55,7 +55,7 @@ class MideaSequenceCommand extends BaseCommand {
 
   constructor(
     data: Uint8Array,
-    private readonly sequenceIndex: number = 30
+    private readonly sequenceIndex: number = 30,
   ) {
     super(data);
   }
@@ -143,7 +143,7 @@ export class AirConditionerStatusCommand extends MideaSequenceCommand {
         0x00,
         // Checksum
         0x00,
-      ])
+      ]),
     );
   }
 }
@@ -151,7 +151,7 @@ export class AirConditionerStatusCommand extends MideaSequenceCommand {
 export function createLanCommand(
   applianceID: Uint8Array,
   command: BaseCommand,
-  signKey: Uint8Array
+  signKey: Uint8Array,
 ) {
   const now = new Date();
   // Init the packet with the header data.
@@ -200,7 +200,7 @@ export function createLanCommand(
       0x00,
       0x00,
       0x00,
-    ])
+    ]),
   );
 
   // local packets are encrypted
@@ -284,7 +284,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
         0x00,
         0x00,
         0x00,
-      ])
+      ]),
     );
   }
 
