@@ -9,6 +9,12 @@
   "bugs": {
     "url": "https://github.com/apexskier/homebridge-midea-ac/issues"
   },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/apexskier"
+    }
+  ],
   "main": "dist/index.js",
   "files": [
     "/dist",
