@@ -261,7 +261,21 @@ class LANDevice {
     return packets;
   }
 
+  private _pendingRequest: Promise<Buffer> | null = null;
+  private _queuedRequests: Array<Uint8Array> = [];
+
   async request(message: Uint8Array) {
+    if (this._pendingRequest) {
+      this._pendingRequest = this._pendingRequest.then(() =>
+        this.request_(message),
+      );
+    } else {
+      this._pendingRequest = this.request_(message);
+    }
+    return this._pendingRequest;
+  }
+
+  async request_(message: Uint8Array) {
     await this.connected;
 
     await new Promise<void>((resolve, reject) => {
@@ -638,7 +652,19 @@ export class MideaAccessory {
     this.authenticated = true;
   }
 
-  async updateStatus() {
+  private _pendingUpdateStatus: Promise<void> | null = null;
+
+  updateStatus() {
+    if (this._pendingUpdateStatus) {
+      return this._pendingUpdateStatus;
+    }
+    this._pendingUpdateStatus = this._updateStatus().finally(() => {
+      this._pendingUpdateStatus = null;
+    });
+    return this._pendingUpdateStatus;
+  }
+
+  async _updateStatus() {
     if (!this.authenticated) {
       await this.authenticate();
     }
