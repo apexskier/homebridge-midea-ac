@@ -221,7 +221,7 @@ class LANDevice {
   ) {
     this.client.setKeepAlive(true);
     this.client.on("close", () => {
-      this.log.debug("landevice close");
+      this.log.warn("landevice close");
       this.connect();
     });
     this.connect();
@@ -334,7 +334,7 @@ function strxor(plain_text: Buffer, key: Buffer) {
 }
 
 export class MideaAccessory {
-  public status: null | ReturnType<typeof parseACStatus> = null;
+  public status: ReturnType<typeof parseACStatus> | null = null;
 
   private device: LANDevice;
 
@@ -400,21 +400,21 @@ export class MideaAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
     this.heaterCoolerService.setCharacteristic(
       this.platform.Characteristic.Name,
-      "TODO",
+      "Air Conditioner",
     );
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(() => this.getHeaterCoolerActive())
+      .onGet(this.getHeaterCoolerActive.bind(this))
       .onSet((value: CharacteristicValue) => {
         this.platform.log.debug(`Triggered SET Active To: ${value}`);
         const targetPowerState =
           value === this.platform.Characteristic.Active.ACTIVE;
-        const cmd = this.createSetCommand();
-        cmd.running = targetPowerState;
-        if (cmd.mode === ACOperationalMode.FanOnly) {
-          cmd.mode = ACOperationalMode.Auto;
-        }
-        this.sendUpdateToDevice(cmd);
+        this.sendUpdateToDevice((cmd) => {
+          cmd.running = targetPowerState;
+          if (cmd.mode === ACOperationalMode.FanOnly) {
+            cmd.mode = ACOperationalMode.Auto;
+          }
+        });
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
@@ -425,7 +425,7 @@ export class MideaAccessory {
           this.platform.Characteristic.CurrentHeaterCoolerState.COOLING,
         ],
       })
-      .onGet(() => this.getCurrentHeaterCoolerState());
+      .onGet(this.getCurrentHeaterCoolerState.bind(this));
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
       .setProps({
@@ -434,13 +434,12 @@ export class MideaAccessory {
           this.platform.Characteristic.TargetHeaterCoolerState.COOL,
         ],
       })
-      .onGet(() => this.getTargetHeaterCoolerState())
+      .onGet(this.getTargetHeaterCoolerState.bind(this))
       .onSet((value) => {
         this.platform.log.debug(
-          `Triggered SET HeaterCooler State To: ${value}`,
+          `Triggered SET TargetHeaterCoolerState State To: ${value}`,
         );
-        if (this.getTargetHeaterCoolerState() !== value) {
-          const cmd = this.createSetCommand();
+        this.sendUpdateToDevice((cmd) => {
           switch (value) {
             case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
               cmd.mode = ACOperationalMode.Auto;
@@ -452,17 +451,28 @@ export class MideaAccessory {
               cmd.mode = ACOperationalMode.Heating;
               break;
             default:
+              this.platform.log.error("ERROR targetheatercoolerstate!");
               throw new Error(`unknown target heater cooler state: ${value}`);
           }
-          this.sendUpdateToDevice(cmd);
-        }
+        });
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .onGet(() => {
         if (this.status === null) {
+          this.platform.log.warn(
+            "getting CurrentTemperature, status not available",
+          );
           throw new this.platform.api.hap.HapStatusError(
             this.platform.api.hap.HAPStatus.RESOURCE_BUSY,
+          );
+        }
+        if (this.status.indoor_temperature === null) {
+          this.platform.log.warn(
+            "getting CurrentTemperature, temp not available",
+          );
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.INVALID_VALUE_IN_REQUEST,
           );
         }
         return this.status.indoor_temperature;
@@ -478,6 +488,9 @@ export class MideaAccessory {
       })
       .onGet(() => {
         if (this.status === null) {
+          this.platform.log.warn(
+            "getting CoolingThresholdTemperature, status not available",
+          );
           throw new this.platform.api.hap.HapStatusError(
             this.platform.api.hap.HAPStatus.RESOURCE_BUSY,
           );
@@ -488,9 +501,9 @@ export class MideaAccessory {
         this.platform.log.debug(
           `Triggered SET ThresholdTemperature To: ${value}˚C`,
         );
-        const cmd = this.createSetCommand();
-        cmd.temperature = Number(value);
-        this.sendUpdateToDevice(cmd);
+        this.sendUpdateToDevice((cmd) => {
+          cmd.temperature = Number(value);
+        });
       });
     this.heaterCoolerService
       .getCharacteristic(this.platform.Characteristic.SwingMode)
@@ -509,12 +522,11 @@ export class MideaAccessory {
         this.platform.log.debug(
           `Triggered SET Temperature Display Units To: ${value}`,
         );
-        const valueIsFahrenheit =
-          value ===
-          this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
-        const cmd = this.createSetCommand();
-        cmd.fahrenheit = valueIsFahrenheit;
-        this.sendUpdateToDevice(cmd);
+        this.sendUpdateToDevice((cmd) => {
+          cmd.fahrenheit =
+            value ===
+            this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+        });
       });
 
     this.fanService =
@@ -526,14 +538,14 @@ export class MideaAccessory {
       .onGet(this.getFanActive.bind(this))
       .onSet((value) => {
         this.platform.log.debug(`Triggered SET Fan Active To: ${value}`);
-        const cmd = this.createSetCommand();
-        if (value === this.platform.Characteristic.Active.ACTIVE) {
-          cmd.running = true;
-          cmd.mode = ACOperationalMode.FanOnly;
-        } else {
-          cmd.running = false;
-        }
-        this.sendUpdateToDevice(cmd);
+        this.sendUpdateToDevice((cmd) => {
+          if (value === this.platform.Characteristic.Active.ACTIVE) {
+            cmd.running = true;
+            cmd.mode = ACOperationalMode.FanOnly;
+          } else {
+            cmd.running = false;
+          }
+        });
       });
     this.fanService
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
@@ -544,9 +556,9 @@ export class MideaAccessory {
       .onSet((value) => {
         this.platform.log.debug(`Triggered SET TargetFanState To: ${value}`);
         if (value === this.platform.Characteristic.TargetFanState.AUTO) {
-          const cmd = this.createSetCommand();
-          cmd.fan_speed = 102;
-          this.sendUpdateToDevice(cmd);
+          this.sendUpdateToDevice((cmd) => {
+            cmd.fan_speed = 102;
+          });
         }
       });
     this.fanService
@@ -566,24 +578,24 @@ export class MideaAccessory {
         if (typeof value !== "number") {
           throw new Error("value not number");
         }
-        const cmd = this.createSetCommand();
-        // transform values in percent
-        // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
-        if (value === 0) {
-          cmd.fan_speed = 102;
-          cmd.mode = ACOperationalMode.Off;
-        } else if (value <= 20) {
-          cmd.fan_speed = 20;
-        } else if (value > 20 && value <= 40) {
-          cmd.fan_speed = 40;
-        } else if (value > 40 && value <= 60) {
-          cmd.fan_speed = 60;
-        } else if (value > 60 && value <= 80) {
-          cmd.fan_speed = 80;
-        } else {
-          cmd.fan_speed = 100;
-        }
-        this.sendUpdateToDevice(cmd);
+        this.sendUpdateToDevice((cmd) => {
+          // transform values in percent
+          // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
+          if (value === 0) {
+            cmd.fan_speed = 102;
+            cmd.mode = ACOperationalMode.Off;
+          } else if (value <= 20) {
+            cmd.fan_speed = 20;
+          } else if (value > 20 && value <= 40) {
+            cmd.fan_speed = 40;
+          } else if (value > 40 && value <= 60) {
+            cmd.fan_speed = 60;
+          } else if (value > 60 && value <= 80) {
+            cmd.fan_speed = 80;
+          } else {
+            cmd.fan_speed = 100;
+          }
+        });
       });
 
     this.outdoorTemperatureService =
@@ -718,14 +730,19 @@ export class MideaAccessory {
     }
   }
 
-  async sendUpdateToDevice(cmd: AirConditionerSetCommand) {
+  async sendUpdateToDevice(update: (cmd: AirConditionerSetCommand) => void) {
     if (!this.status) {
       return;
     }
 
-    this.platform.log.debug("sending update to device", JSON.stringify(cmd));
+    const cmd = this.createSetCommand();
+    update(cmd);
+    if (Buffer.from(this.createSetCommand().data).equals(cmd.data)) {
+      this.platform.log.debug("no change, not sending update");
+      return;
+    }
 
-    cmd.screen = true;
+    this.platform.log.debug("sending update to device", JSON.stringify(cmd));
 
     const lanPacket = createLanCommand(
       this.accessory.context.deviceIdBytes,
@@ -740,7 +757,7 @@ export class MideaAccessory {
     }
 
     try {
-      return this.updateStatus();
+      await this.updateStatus();
     } catch (err) {
       this.platform.log.error("update after set error", err);
       return;
@@ -857,10 +874,10 @@ export class MideaAccessory {
 
   setSwingMode(value: CharacteristicValue) {
     this.platform.log.debug(`Triggered SET SwingMode To: ${value}`);
-    const cmd = this.createSetCommand();
-    // convert this.swingMode to a 0/1
-    cmd.vertical_swing = value ? 1 : 0;
-    this.sendUpdateToDevice(cmd);
+    this.sendUpdateToDevice((cmd) => {
+      // convert this.swingMode to a 0/1
+      cmd.vertical_swing = value ? 1 : 0;
+    });
   }
 
   getSwingMode() {

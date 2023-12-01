@@ -6,7 +6,7 @@ import { ACOperationalMode } from "./enums/ACOperationalMode";
 import { AC_MAX_TEMPERATURE, AC_MIN_TEMPERATURE } from "./Constants";
 
 export abstract class BaseCommand {
-  constructor(protected data: Uint8Array) {}
+  constructor(public data: Uint8Array) {}
 
   finalize() {
     // Add the CRC8
