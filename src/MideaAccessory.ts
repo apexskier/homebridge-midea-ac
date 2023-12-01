@@ -434,7 +434,6 @@ export class MideaAccessory {
       .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
       .setProps({
         validValues: [
-          this.platform.Characteristic.TargetHeaterCoolerState.AUTO,
           this.platform.Characteristic.TargetHeaterCoolerState.COOL,
         ],
       })
@@ -455,7 +454,6 @@ export class MideaAccessory {
               cmd.mode = ACOperationalMode.Heating;
               break;
             default:
-              this.platform.log.error("ERROR targetheatercoolerstate!");
               throw new Error(`unknown target heater cooler state: ${value}`);
           }
         });
@@ -582,7 +580,7 @@ export class MideaAccessory {
           // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
           if (value === 0) {
             cmd.fan_speed = 102;
-            cmd.mode = ACOperationalMode.Off;
+            cmd.running = false;
           } else if (value <= 20) {
             cmd.fan_speed = 20;
           } else if (value > 20 && value <= 40) {
@@ -821,46 +819,38 @@ export class MideaAccessory {
       case ACOperationalMode.Dry:
       case ACOperationalMode.Cooling:
       case ACOperationalMode.CustomDry:
+        return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
       case ACOperationalMode.Auto:
-        if (
-          this.status.indoor_temperature &&
+        return this.status.indoor_temperature &&
           this.status.indoor_temperature >= this.status.target_temperature
-        ) {
-          return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
-        }
-        return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
-      case ACOperationalMode.Heating:
-        this.platform.log.warn("unexpectedly in heating state");
-        return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
+          ? this.platform.Characteristic.CurrentHeaterCoolerState.COOLING
+          : this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
       case ACOperationalMode.FanOnly:
+        return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
       case ACOperationalMode.Off:
         return this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
+      case ACOperationalMode.Heating:
+        throw new Error("unexpectedly in heating state");
       default:
-        throw new Error("unexpected mode");
+        throw new Error(`unknown mode: ${this.status.mode}!`);
     }
   }
 
   getTargetHeaterCoolerState() {
+    // if this is Auto, Home on iOS won't display the actual temperature dial.
+    // Apple intends it to mean "HEAT or COOL", not auto cool like Midea does.
+    //
+    // macOS works
+    //
+    // https://developer.apple.com/documentation/homekit/hmcharacteristicvaluetargetheatercoolerstate
+
     if (this.status === null) {
       throw new this.platform.api.hap.HapStatusError(
         this.platform.api.hap.HAPStatus.RESOURCE_BUSY,
       );
     }
-    switch (this.status.mode) {
-      case ACOperationalMode.FanOnly:
-      case ACOperationalMode.Cooling:
-        return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
-      case ACOperationalMode.Heating:
-        this.platform.log.warn("unexpectedly in heating state");
-        return this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
-      case ACOperationalMode.Dry:
-      case ACOperationalMode.Auto:
-      case ACOperationalMode.CustomDry:
-      case ACOperationalMode.Off:
-        return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
-      default:
-        throw new Error("unexpected mode");
-    }
+
+    return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
   }
 
   getRotationSpeed() {
