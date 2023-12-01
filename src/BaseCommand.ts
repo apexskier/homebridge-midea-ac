@@ -175,14 +175,14 @@ export function createLanCommand(
       0x00,
       0x00,
       // 8 bytes - Date&Time
-      0, // now.getUTCMilliseconds() / 10,
-      0, // now.getUTCSeconds(),
-      0, // now.getUTCMinutes(),
-      0, // now.getUTCHours(),
-      0, // now.getUTCDate(),
-      0, // now.getUTCMonth(),
-      0, // now.getUTCFullYear() % 100,
-      0, // Math.trunc(now.getUTCFullYear() / 100),
+      now.getUTCMilliseconds() / 10,
+      now.getUTCSeconds(),
+      now.getUTCMinutes(),
+      now.getUTCHours(),
+      now.getUTCDate(),
+      now.getUTCMonth(),
+      now.getUTCFullYear() % 100,
+      Math.trunc(now.getUTCFullYear() / 100),
       // 8 bytes - Device ID
       ...applianceID,
       0x00, // id_bytes[6],
@@ -289,7 +289,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get running() {
-    return (this.data[11] & 0b00000001) != 0;
+    return (this.data[11] & 0b00000001) !== 0;
   }
 
   set running(state: boolean) {
@@ -298,7 +298,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get beep_prompt() {
-    return (this.data[11] & 0b01000000) != 0;
+    return (this.data[11] & 0b01000000) !== 0;
   }
 
   set beep_prompt(state: boolean) {
@@ -333,7 +333,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
 
   get temperature_decimal() {
     // Current target A/C temperature (decimals)
-    return (this.data[12] & 0b00010000) != 0 ? 0.5 : 0;
+    return (this.data[12] & 0b00010000) !== 0 ? 0.5 : 0;
   }
 
   set temperature_decimal(digit: number) {
@@ -371,7 +371,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get turbo_fan() {
-    return (this.data[18] & 0b00100000) != 0;
+    return (this.data[18] & 0b00100000) !== 0;
   }
 
   set turbo_fan(turbo_fan: boolean) {
@@ -380,7 +380,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get dryer() {
-    return (this.data[19] & 0b00000100) != 0;
+    return (this.data[19] & 0b00000100) !== 0;
   }
 
   set dryer(dryer: boolean) {
@@ -389,7 +389,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get purifier() {
-    return (this.data[19] & 0b00100000) != 0;
+    return (this.data[19] & 0b00100000) !== 0;
   }
 
   set purifier(purifier: boolean) {
@@ -407,7 +407,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get comfort_sleep() {
-    return (this.data[20] & 0b10000000) != 0;
+    return (this.data[20] & 0b10000000) !== 0;
   }
 
   set comfort_sleep(state: boolean) {
@@ -428,7 +428,7 @@ export class AirConditionerSetCommand extends MideaSequenceCommand {
   }
 
   get turbo() {
-    return (this.data[20] & 0b00000010) != 0;
+    return (this.data[20] & 0b00000010) !== 0;
   }
 
   set turbo(turbo: boolean) {

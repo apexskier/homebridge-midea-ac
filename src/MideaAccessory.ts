@@ -277,11 +277,13 @@ class LANDevice {
     return await new Promise<Buffer>((resolve, reject) => {
       const handleError = (err: Error) => {
         this.log.error("landevice error", err);
+        this.client.off("error", handleError);
+        this.client.off("data", receive);
         reject(err);
       };
       const receive = (data: Buffer) => {
-        this.client.off("data", receive);
         this.client.off("error", handleError);
+        this.client.off("data", receive);
         resolve(data);
       };
       this.client.on("error", handleError);
