@@ -150,7 +150,10 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         this.mideaAccessories.push(new MideaAccessory(this, existingAccessory));
       } else {
         this.log.debug(`Adding new device: ${deviceIdBytes.toString("hex")}`);
-        const accessory = new this.api.platformAccessory("TODO", uuid);
+        const accessory = new this.api.platformAccessory(
+          "Air Conditioner",
+          uuid,
+        );
         accessory.context.deviceIdBytes = deviceIdBytes;
         accessory.context.deviceType = type;
         accessory.context.sn = serialNumber;
