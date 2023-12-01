@@ -16,17 +16,14 @@ import { MideaAccessory } from "./MideaAccessory";
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
 import { timestamp } from "./timestamp";
+import { MideaErrorCodes } from "./enums/MideaErrorCodes";
 
 export class MideaPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic =
     this.api.hap.Characteristic;
-  updateInterval: NodeJS.Timer | null = null;
-  reauthInterval: NodeJS.Timer | null = null;
-  accessToken: string = "";
-  sessionId: string = "";
-  userId: string = "";
-  dataKey: string = "";
+
+  sessionId = "";
   public readonly accessories: PlatformAccessory[] = [];
   mideaAccessories: MideaAccessory[] = [];
 
@@ -229,7 +226,14 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       throw new Error(`status ${response.status}: ${url.pathname}`);
     }
     const responseBody = await response.json();
-    if (parseInt(responseBody.errorCode)) {
+    const errorCode = parseInt(responseBody.errorCode);
+    if (errorCode) {
+      if (errorCode === MideaErrorCodes.InvalidSession) {
+        this.log.debug("invalid session, logging in again and retrying");
+        this.sessionId = "";
+        await this.login();
+        return this.apiRequest(url, params);
+      }
       throw new Error(
         `error: ${url.pathname}: ${responseBody.errorCode}, ${responseBody.msg}`,
       );
