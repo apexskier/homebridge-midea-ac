@@ -389,10 +389,6 @@ export class MideaAccessory {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         require("../package.json").version,
       )
-      // .setCharacteristic(
-      //   this.platform.Characteristic.Model,
-      //   this.accessory.context.modelNumber
-      // )
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
         this.accessory.context.sn,

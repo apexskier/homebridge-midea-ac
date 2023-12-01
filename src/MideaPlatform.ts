@@ -186,14 +186,9 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         );
         existingAccessory.context.deviceIdBytes = deviceIdBytes;
         existingAccessory.context.deviceType = type;
-        // existingAccessory.context.name = "TODO";
-        // existingAccessory.context.userId = currentElement.userId;
-        // existingAccessory.context.modelNumber = currentElement.modelNumber;
         existingAccessory.context.sn = serialNumber;
         existingAccessory.context.address = address;
         existingAccessory.context.port = port;
-        // this.log.debug(`Model Number:${existingAccessory.context.modelNumber}`);
-        this.log.debug(`Serial Number:${existingAccessory.context.sn}`);
 
         this.api.updatePlatformAccessories([existingAccessory]);
 
@@ -203,14 +198,9 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         const accessory = new this.api.platformAccessory("TODO", uuid);
         accessory.context.deviceIdBytes = deviceIdBytes;
         accessory.context.deviceType = type;
-        // accessory.context.name = currentElement.name;
-        // accessory.context.userId = currentElement.userId;
-        // accessory.context.modelNumber = currentElement.modelNumber;
         accessory.context.sn = serialNumber;
         accessory.context.address = address;
         accessory.context.port = port;
-        // this.log.debug(`Model Number:${accessory.context.modelNumber}`);
-        this.log.debug(`Serial Number:${accessory.context.sn}`);
 
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
           accessory,
@@ -223,92 +213,13 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     });
   }
 
-  // async sendCommand(
-  //   device: MideaAccessory,
-  //   data: ReadonlyArray<number>,
-  //   intent: string,
-  //   firstTry = true
-  // ) {
-  //   try {
-  //     const response = await this.apiRequest("/appliance/transparent/send", {
-  //       applianceId: device.deviceId,
-  //       funId: "0000", // maybe it is also "FC02"
-  //       order: Utils.encryptAes(Utils.encode(data), this.dataKey),
-  //       sessionId: this.sessionId,
-  //     });
-  //     if (response.data.errorCode && response.data.errorCode !== "0") {
-  //       switch (parseInt(response.data.errorCode)) {
-  //         case MideaErrorCodes.DeviceUnreachable:
-  //           // device is offline, don't error, since we can't do anything
-  //           this.log.warn(`${device.name} (${device.deviceId}) is offline`);
-  //           return;
-  //         case MideaErrorCodes.InvalidSession:
-  //           if (firstTry) {
-  //             this.log.debug(`Logged out, logging and and retrying, ${intent}`);
-  //             await this.login();
-  //             return this.sendCommand(device, data, intent, false);
-  //           }
-  //       }
-  //       throw new Error(
-  //         `Send command to: ${device.name} (${device.deviceId}) ${intent} returned error: ${response.data.msg} (${response.data.errorCode})`
-  //       );
-  //     }
-
-  //     this.log.debug(
-  //       `Send command to: ${device.name} (${device.deviceId}) ${intent} success!`
-  //     );
-  //     const applianceResponse = new ACApplianceResponse(
-  //       Utils.decode(Utils.decryptAes(response.data.result.reply, this.dataKey))
-  //     );
-
-  //     device.targetTemperature = applianceResponse.targetTemperature;
-  //     device.indoorTemperature = applianceResponse.indoorTemperature;
-  //     device.outdoorTemperature = applianceResponse.outdoorTemperature;
-  //     device.swingMode = applianceResponse.swingMode;
-  //     device.useFahrenheit = applianceResponse.useFahrenheit;
-  //     device.turboFan = applianceResponse.turboFan;
-  //     device.ecoMode = applianceResponse.ecoMode;
-  //     device.turboMode = applianceResponse.turboMode;
-  //     device.comfortSleep = applianceResponse.comfortSleep;
-  //     device.dryer = applianceResponse.dryer;
-  //     device.purifier = applianceResponse.purifier;
-
-  //     this.log.debug(`Target Temperature: ${device.targetTemperature}˚C`);
-  //     this.log.debug(`Indoor Temperature: ${device.indoorTemperature}˚C`);
-  //     this.log.debug(`Outdoor Temperature: ${device.outdoorTemperature}˚C`);
-  //     this.log.debug(`Swing Mode set to: ${device.swingMode}`);
-  //     this.log.debug(`Fahrenheit set to: ${device.useFahrenheit}`);
-  //     this.log.debug(`Turbo Fan set to: ${device.turboFan}`);
-  //     this.log.debug(`Eco Mode set to: ${device.ecoMode}`);
-  //     this.log.debug(`Turbo Mode set to: ${device.turboMode}`);
-  //     this.log.debug(`Comfort Sleep set to: ${device.comfortSleep}`);
-  //     this.log.debug(`Dryer set to: ${device.dryer}`);
-  //     this.log.debug(`Purifier set to: ${device.purifier}`);
-
-  //     // Common
-  //     device.powerState = applianceResponse.powerState;
-  //     device.operationalMode = applianceResponse.operationalMode;
-  //     device.fanSpeed = applianceResponse.fanSpeed;
-
-  //     this.log.debug(`Power State set to: ${device.powerState}`);
-  //     this.log.debug(`Operational Mode set to: ${device.operationalMode}`);
-  //     this.log.debug(`Fan Speed set to: ${device.fanSpeed}`);
-
-  //     // this.log.debug(
-  //     //   `Full data: ${Utils.formatResponse(applianceResponse.data)}`
-  //     // );
-  //   } catch (err) {
-  //     this.log.error(`SendCommand (${intent}) request failed: ${err}`);
-  //     throw err;
-  //   }
-  // }
-
   async getDeviceToken(udpid: string) {
     const form: Record<string, string | number> = {
       ...baseForm(),
       udpid,
       sessionId: this.sessionId,
     };
+    this.log.debug(`Getting token for ${udpid}`, form);
     const url = new URL("https://mapp.appsmb.com/v1/iot/secure/getToken");
     form.sign = getSign(url.pathname, form, Constants.AppKey);
     const body = new FormData();
