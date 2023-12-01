@@ -1,15 +1,13 @@
-import qs, { parse } from "querystring";
 import * as Constants from "./Constants";
 import crypto from "crypto";
 import net from "net";
 import dgram from "node:dgram";
-import { decryptAes, encryptAes, getSign, getSignPassword } from "./Utils";
-import BaseCommand, {
+import { getSign, getSignPassword } from "./Utils";
+import {
   AirConditionerStatusCommand,
   DeviceCapabilitiesCommand,
   createLanCommand,
 } from "./BaseCommand";
-import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { timestamp } from "./timestamp";
 
 const server = dgram.createSocket("udp4");
@@ -41,9 +39,6 @@ function buf2hex(buffer) {
     .join(" ");
 }
 
-server.on("data", (msg, rinfo) => {
-  console.debug(`discovery server got data: ${msg} from ${rinfo.address}`);
-});
 server.on("message", async (data, rinfo) => {
   console.debug(`discovery server got message from ${rinfo.address}`);
 

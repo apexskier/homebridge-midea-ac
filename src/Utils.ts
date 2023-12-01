@@ -1,4 +1,12 @@
 import crypto from "crypto";
+import {
+  AppId,
+  ClientType,
+  RequestFormat,
+  Language,
+  RequestSource,
+} from "./Constants";
+import { timestamp } from "./timestamp";
 
 export function encode(data: ReadonlyArray<number>): number[] {
   const normalized: Array<number> = [];
@@ -125,4 +133,16 @@ export function generateDataKey(accessToken: string, appKey: string) {
     ""
   );
   return decipher.update(accessToken, "hex", "utf8");
+}
+
+export function baseForm() {
+  const d: Record<string, string | number> = {
+    appId: AppId,
+    clientType: ClientType,
+    format: RequestFormat,
+    language: Language,
+    src: RequestSource,
+    stamp: timestamp(),
+  };
+  return d;
 }
