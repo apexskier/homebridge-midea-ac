@@ -349,9 +349,10 @@ export class MideaAccessory {
 
   private device: LANDevice;
 
-  private heaterCoolerService!: Service;
-  private fanService!: Service;
-  private outdoorTemperatureService!: Service;
+  private heaterCoolerService: Service;
+  private fanService: Service;
+  private outdoorTemperatureService: Service;
+  private ecoModeSwitchService: Service;
   authenticated: boolean = false;
 
   createSetCommand() {
@@ -585,6 +586,37 @@ export class MideaAccessory {
       });
     // TODO: set a fault on this if the AC is offline
 
+    this.ecoModeSwitchService =
+      this.accessory.getServiceById(this.platform.Service.Switch, "eco") ||
+      this.accessory.addService(
+        this.platform.Service.Switch,
+        "Eco Mode",
+        "eco",
+      );
+    this.ecoModeSwitchService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      "Eco Mode",
+    );
+    this.ecoModeSwitchService
+      .getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => {
+        if (!this.status) {
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.RESOURCE_BUSY,
+          );
+        }
+        return this.status.eco;
+      })
+      .onSet((value) => {
+        this.platform.log.debug(`Triggered SET On Eco Mode To: ${value}`);
+        this.sendUpdateToDevice((cmd) => {
+          if (typeof value !== "boolean") {
+            throw new Error(`unexpected non-boolean value: ${value}`);
+          }
+          cmd.eco_mode = value;
+        });
+      });
+
     this.poll();
   }
 
@@ -712,6 +744,11 @@ export class MideaAccessory {
         this.status.outdoor_temperature,
       );
     }
+
+    this.ecoModeSwitchService.updateCharacteristic(
+      this.platform.Characteristic.On,
+      this.status.eco,
+    );
   }
 
   // debounce sent updates
