@@ -14,8 +14,6 @@ import {
   createLanCommand,
 } from "./BaseCommand";
 import {
-  AC_MAX_TEMPERATURE,
-  AC_MIN_TEMPERATURE,
   ENCRYPTED_MESSAGE_TYPES,
   HDR_8370,
   MessageType,
@@ -484,9 +482,9 @@ export class MideaAccessory {
         this.platform.Characteristic.CoolingThresholdTemperature,
       )
       .setProps({
-        minValue: AC_MIN_TEMPERATURE,
-        maxValue: AC_MAX_TEMPERATURE,
-        minStep: 0.5,
+        minValue: 15, // AC_MIN_TEMPERATURE
+        maxValue: 30, // AC_MAX_TEMPERATURE
+        minStep: 1,
       })
       .onGet(() => {
         if (this.status === null) {
@@ -557,43 +555,16 @@ export class MideaAccessory {
       .onGet(this.getTargetFanState.bind(this))
       .onSet((value) => {
         this.platform.log.debug(`Triggered SET TargetFanState To: ${value}`);
-        if (value === this.platform.Characteristic.TargetFanState.AUTO) {
-          this.sendUpdateToDevice((cmd) => {
-            cmd.fan_speed = 102;
-          });
-        }
+        const auto = value === this.platform.Characteristic.TargetFanState.AUTO;
+        this.ensureRotationCharacteristic(auto);
+        this.sendUpdateToDevice((cmd) => {
+          cmd.fan_speed = auto ? 102 : 60; // default 60
+        });
       });
     this.fanService
       .getCharacteristic(this.platform.Characteristic.SwingMode)
       .onGet(this.getSwingMode.bind(this))
       .onSet(this.setSwingMode.bind(this));
-    this.fanService
-      .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .onGet(this.getRotationSpeed.bind(this))
-      .onSet((value) => {
-        this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
-        if (typeof value !== "number") {
-          throw new Error("value not number");
-        }
-        this.sendUpdateToDevice((cmd) => {
-          // transform values in percent
-          // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
-          if (value === 0) {
-            cmd.fan_speed = 102;
-            cmd.running = false;
-          } else if (value <= 20) {
-            cmd.fan_speed = 20;
-          } else if (value > 20 && value <= 40) {
-            cmd.fan_speed = 40;
-          } else if (value > 40 && value <= 60) {
-            cmd.fan_speed = 60;
-          } else if (value > 60 && value <= 80) {
-            cmd.fan_speed = 80;
-          } else {
-            cmd.fan_speed = 100;
-          }
-        });
-      });
 
     this.outdoorTemperatureService =
       this.accessory.getService(this.platform.Service.TemperatureSensor) ||
@@ -722,10 +693,14 @@ export class MideaAccessory {
       this.platform.Characteristic.TargetFanState,
       this.getTargetFanState(),
     );
-    this.fanService.updateCharacteristic(
-      this.platform.Characteristic.RotationSpeed,
-      this.getRotationSpeed(),
-    );
+    const fanAuto = this.status.fan_speed > 100;
+    this.ensureRotationCharacteristic(fanAuto);
+    if (!fanAuto) {
+      this.fanService.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getRotationSpeed(),
+      );
+    }
     this.fanService.updateCharacteristic(
       this.platform.Characteristic.SwingMode,
       this.getSwingMode(),
@@ -872,8 +847,10 @@ export class MideaAccessory {
         return this.status.fan_speed;
       case 101:
       case 102:
-        // TODO undefined, auto
-        return 50;
+        // AUTO
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE,
+        );
       default:
         throw new Error(`unknown midea fan speed ${this.status.fan_speed}`);
     }
@@ -950,5 +927,52 @@ export class MideaAccessory {
     return this.status.fan_speed === 102 || this.status.fan_speed === 101
       ? this.platform.Characteristic.TargetFanState.AUTO
       : this.platform.Characteristic.TargetFanState.MANUAL;
+  }
+
+  ensureRotationCharacteristic(auto: boolean) {
+    const hasCharacteristic = this.fanService.testCharacteristic(
+      this.platform.Characteristic.RotationSpeed,
+    );
+    if (auto) {
+      if (hasCharacteristic) {
+        this.platform.log.debug("removing rotation speed characteristic");
+        this.fanService.removeCharacteristic(
+          this.fanService.getCharacteristic(
+            this.platform.Characteristic.RotationSpeed,
+          ),
+        );
+      }
+    } else {
+      if (!hasCharacteristic) {
+        this.platform.log.debug("adding rotation speed characteristic");
+        this.fanService
+          .getCharacteristic(this.platform.Characteristic.RotationSpeed)
+          .onGet(this.getRotationSpeed.bind(this))
+          .onSet((value) => {
+            this.platform.log.debug(`Triggered SET RotationSpeed To: ${value}`);
+            if (typeof value !== "number") {
+              throw new Error("value not number");
+            }
+            this.sendUpdateToDevice((cmd) => {
+              // transform values in percent
+              // values from device are 20="Silent",40="Low",60="Medium",80="High",100="Full",101/102="Auto"
+              if (value === 0) {
+                cmd.fan_speed = 102;
+                cmd.running = false;
+              } else if (value <= 20) {
+                cmd.fan_speed = 20;
+              } else if (value > 20 && value <= 40) {
+                cmd.fan_speed = 40;
+              } else if (value > 40 && value <= 60) {
+                cmd.fan_speed = 60;
+              } else if (value > 60 && value <= 80) {
+                cmd.fan_speed = 80;
+              } else {
+                cmd.fan_speed = 100;
+              }
+            });
+          });
+      }
+    }
   }
 }
