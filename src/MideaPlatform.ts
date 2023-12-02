@@ -23,7 +23,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic =
     this.api.hap.Characteristic;
 
-  private sessionId = "";
   public readonly accessories: PlatformAccessory[] = [];
   mideaAccessories: MideaAccessory[] = [];
 
@@ -33,7 +32,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     api.on("didFinishLaunching", async () => {
-      await this.login();
       await this.getDevices();
     });
   }
@@ -63,8 +61,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         password,
       },
     )) as { sessionId: string };
-
-    this.sessionId = sessionId;
+    return sessionId;
   }
 
   async getDevices() {
@@ -171,12 +168,11 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   }
 
   async getDeviceToken(udpid: string) {
+    const sessionId = await this.login();
+
     const { tokenlist } = (await this.apiRequest(
       new URL("https://mapp.appsmb.com/v1/iot/secure/getToken"),
-      {
-        udpid,
-        sessionId: this.sessionId,
-      },
+      { udpid, sessionId },
     )) as { tokenlist: { udpId: string; token: string; key: string }[] };
 
     return tokenlist.find(({ udpId }) => udpId === udpid)!;
@@ -230,8 +226,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     if (errorCode) {
       if (errorCode === MideaErrorCodes.InvalidSession) {
         this.log.debug("invalid session, logging in again and retrying");
-        this.sessionId = "";
-        await this.login();
         return this.apiRequest(url, params);
       }
       throw new Error(
