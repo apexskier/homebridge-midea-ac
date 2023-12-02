@@ -3,7 +3,12 @@ import crypto from "crypto";
 
 import { MideaDeviceType } from "./enums/MideaDeviceType";
 import { ACOperationalMode } from "./enums/ACOperationalMode";
-import { AC_MAX_TEMPERATURE, AC_MIN_TEMPERATURE } from "./Constants";
+import {
+  AC_MAX_TEMPERATURE,
+  AC_MIN_TEMPERATURE,
+  encodeKey,
+  signKey,
+} from "./Constants";
 
 export abstract class BaseCommand {
   constructor(public data: Uint8Array) {}
@@ -151,7 +156,6 @@ export class AirConditionerStatusCommand extends MideaSequenceCommand {
 export function createLanCommand(
   applianceID: Uint8Array,
   command: BaseCommand,
-  signKey: Uint8Array,
 ) {
   const now = new Date();
   // Init the packet with the header data.
@@ -204,7 +208,6 @@ export function createLanCommand(
   );
 
   // local packets are encrypted
-  const encodeKey = crypto.createHash("md5").update(signKey).digest();
   const cipher = crypto.createCipheriv("aes-128-ecb", encodeKey, "");
   const encrypted = Buffer.concat([
     cipher.update(command.finalize()),
