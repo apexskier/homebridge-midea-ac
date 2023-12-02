@@ -218,8 +218,6 @@ class LANDevice {
   security = new Security();
   client = new net.Socket();
 
-  private connected!: Promise<void>;
-
   constructor(
     private readonly address: string,
     private readonly port: number,
@@ -228,19 +226,44 @@ class LANDevice {
     this.client.setKeepAlive(true);
     this.client.on("close", () => {
       this.log.warn("landevice close");
-      this.connect();
+      this.disconnect();
     });
-    this.connect();
+    this.client.on("error", (err) => {
+      this.log.error("landevice error", err);
+      this.disconnect();
+    });
   }
 
+  _connection: Promise<void> | null = null;
+  disconnect() {
+    this.log.debug("disconnect");
+    this._connection = null;
+  }
   connect() {
-    this.log.debug("connecting");
-    this.connected = new Promise((resolve) => {
-      this.client.connect(this.port, this.address, () => {
-        this.log.debug("connected");
-        resolve();
+    if (this._connection === null) {
+      this.log.debug("connecting");
+      this._connection = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.log.warn("connect timeout, retrying");
+          this.client.off("error", handleError);
+          resolve(this.connect());
+        }, 1000);
+        const handleError = (err: Error) => {
+          this.log.error("connect error", err);
+          this.client.off("error", handleError);
+          clearTimeout(timer);
+          reject(err);
+        };
+        this.client.on("error", handleError);
+        this.client.connect(this.port, this.address, () => {
+          this.log.debug("connected");
+          this.client.off("error", handleError);
+          clearTimeout(timer);
+          resolve();
+        });
       });
-    });
+    }
+    return this._connection;
   }
 
   async request8370(data: Uint8Array) {
@@ -281,7 +304,7 @@ class LANDevice {
   }
 
   async request_(message: Uint8Array) {
-    await this.connected;
+    await this.connect();
 
     await new Promise<void>((resolve, reject) => {
       this.client.write(message, (err) => {
@@ -640,7 +663,12 @@ export class MideaAccessory {
   private poll() {
     this.updateStatus()
       .catch((err) => {
-        this.platform.log.error("update status error", err);
+        this.platform.log.error(
+          "update status error",
+          err,
+          (err as Error).stack,
+        );
+        this.authenticated = false;
       })
       .then(() => setTimeout(this.poll.bind(this), 10 * 1000));
   }
