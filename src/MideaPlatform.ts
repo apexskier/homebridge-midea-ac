@@ -23,7 +23,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic =
     this.api.hap.Characteristic;
 
-  sessionId = "";
+  private sessionId = "";
   public readonly accessories: PlatformAccessory[] = [];
   mideaAccessories: MideaAccessory[] = [];
 
@@ -146,7 +146,6 @@ export class MideaPlatform implements DynamicPlatformPlugin {
         existingAccessory.context.port = port;
 
         this.api.updatePlatformAccessories([existingAccessory]);
-
         this.mideaAccessories.push(new MideaAccessory(this, existingAccessory));
       } else {
         this.log.debug(`Adding new device: ${deviceIdBytes.toString("hex")}`);

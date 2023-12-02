@@ -6,8 +6,6 @@ export const ClientType = 1; // 0: PC, 1: Android, 2: IOS
 export const RequestFormat = 2; // JSON
 export const RequestSource = 1017;
 
-export const iv = Buffer.alloc(16).fill(0);
-
 export const HDR_8370 = Buffer.from([0x83, 0x70]);
 export const HDR_ZZ = Buffer.from([0x5a, 0x5a]);
 export const DISCOVERY_MSG = new Uint8Array([
@@ -23,20 +21,6 @@ export const signKey = new TextEncoder().encode(
   "xhdiwjnchekd4d512chdjx5d8e4c394D2D7S",
 );
 export const encodeKey = crypto.createHash("md5").update(signKey).digest();
-
-export const errorData = Buffer.from(new TextEncoder().encode("ERROR"));
-
-export enum MessageType {
-  HANDSHAKE_REQUEST = 0x0,
-  HANDSHAKE_RESPONSE = 0x1,
-  ENCRYPTED_RESPONSE = 0x3,
-  ENCRYPTED_REQUEST = 0x6,
-  TRANSPARENT = 0xf,
-}
-export const ENCRYPTED_MESSAGE_TYPES = [
-  MessageType.ENCRYPTED_RESPONSE,
-  MessageType.ENCRYPTED_REQUEST,
-];
 
 export const AC_MIN_TEMPERATURE = 16;
 export const AC_MAX_TEMPERATURE = 31;

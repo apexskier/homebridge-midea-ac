@@ -13,15 +13,23 @@ import {
   AirConditionerStatusCommand,
   createLanCommand,
 } from "./BaseCommand";
-import {
-  ENCRYPTED_MESSAGE_TYPES,
-  HDR_8370,
-  MessageType,
-  encodeKey,
-  errorData,
-  iv,
-  signKey,
-} from "./Constants";
+import { HDR_8370, encodeKey } from "./Constants";
+
+const iv = Buffer.alloc(16).fill(0);
+
+const errorData = Buffer.from(new TextEncoder().encode("ERROR"));
+
+export enum MessageType {
+  HANDSHAKE_REQUEST = 0x0,
+  HANDSHAKE_RESPONSE = 0x1,
+  ENCRYPTED_RESPONSE = 0x3,
+  ENCRYPTED_REQUEST = 0x6,
+  TRANSPARENT = 0xf,
+}
+export const ENCRYPTED_MESSAGE_TYPES = [
+  MessageType.ENCRYPTED_RESPONSE,
+  MessageType.ENCRYPTED_REQUEST,
+];
 
 function convertUDPId(bytes: Uint8Array) {
   const digest = crypto.createHash("sha256").update(bytes).digest();
@@ -285,19 +293,28 @@ class LANDevice {
       });
     });
 
-    return await new Promise<Buffer>((resolve, reject) => {
+    return new Promise<Buffer>((resolve, reject) => {
+      const cleanup = () => {
+        this.client.off("error", handleError);
+        this.client.off("close", handleClose);
+        this.client.off("data", receive);
+      };
+      const handleClose = () => {
+        this.log.warn("connection closed mid-request, retrying");
+        cleanup();
+        resolve(this.request_(message));
+      };
       const handleError = (err: Error) => {
         this.log.error("landevice error", err);
-        this.client.off("error", handleError);
-        this.client.off("data", receive);
+        cleanup();
         reject(err);
       };
       const receive = (data: Buffer) => {
-        this.client.off("error", handleError);
-        this.client.off("data", receive);
+        cleanup();
         resolve(data);
       };
       this.client.on("error", handleError);
+      this.client.on("close", handleClose);
       this.client.on("data", receive);
     });
   }
@@ -660,7 +677,6 @@ export class MideaAccessory {
     const lanPacket = createLanCommand(
       this.accessory.context.deviceIdBytes,
       cmd,
-      signKey,
     );
 
     let statusResp: Buffer[];
@@ -785,7 +801,6 @@ export class MideaAccessory {
     const lanPacket = createLanCommand(
       this.accessory.context.deviceIdBytes,
       cmd,
-      signKey,
     );
     try {
       await this.device.request8370(lanPacket);
@@ -800,6 +815,8 @@ export class MideaAccessory {
       this.platform.log.error("update after set error", err);
       return;
     }
+
+    this.platform.log.debug("update sent");
   }
 
   get deviceIdBytes() {
