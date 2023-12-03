@@ -297,7 +297,7 @@ class LANDevice {
   private _pendingRequest: Promise<Buffer> | null = null;
   async request(message: Uint8Array) {
     if (this._pendingRequest) {
-      this._pendingRequest = this._pendingRequest.then(() =>
+      this._pendingRequest = this._pendingRequest.finally(() =>
         this.request_(message),
       );
     } else {
@@ -704,9 +704,10 @@ export class MideaAccessory {
   }
 
   async _updateStatus() {
+    this.platform.log.debug("requesting status");
+
     await this.authenticate();
 
-    this.platform.log.debug("requesting status");
     const cmd = new AirConditionerStatusCommand();
     const lanPacket = createLanCommand(
       this.accessory.context.deviceIdBytes,
