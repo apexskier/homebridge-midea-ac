@@ -224,11 +224,11 @@ class LANDevice {
     private readonly log: Logger,
   ) {
     this.client.setKeepAlive(true);
-    this.client.on("close", () => {
-      this.log.warn("landevice close");
+    this.client.addListener("close", (hadError) => {
+      this.log.warn("landevice close", hadError);
       this.disconnect();
     });
-    this.client.on("error", (err) => {
+    this.client.addListener("error", (err) => {
       this.log.error("landevice error", err);
       this.disconnect();
     });
@@ -245,19 +245,19 @@ class LANDevice {
       this._connection = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.log.warn("connect timeout, retrying");
-          this.client.off("error", handleError);
+          this.client.removeListener("error", handleError);
           resolve(this.connect());
         }, 1000);
         const handleError = (err: Error) => {
           this.log.error("connect error", err);
-          this.client.off("error", handleError);
+          this.client.removeListener("error", handleError);
           clearTimeout(timer);
           reject(err);
         };
-        this.client.on("error", handleError);
+        this.client.addListener("error", handleError);
         this.client.connect(this.port, this.address, () => {
           this.log.debug("connected");
-          this.client.off("error", handleError);
+          this.client.removeListener("error", handleError);
           clearTimeout(timer);
           resolve();
         });
@@ -306,21 +306,11 @@ class LANDevice {
   async request_(message: Uint8Array) {
     await this.connect();
 
-    await new Promise<void>((resolve, reject) => {
-      this.client.write(message, (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    return new Promise<Buffer>((resolve, reject) => {
+    const receiveData = new Promise<Buffer>((resolve, reject) => {
       const cleanup = () => {
-        this.client.off("error", handleError);
-        this.client.off("close", handleClose);
-        this.client.off("data", receive);
+        this.client.removeListener("error", handleError);
+        this.client.removeListener("close", handleClose);
+        this.client.removeListener("data", receive);
       };
       const handleClose = () => {
         this.log.warn("connection closed mid-request, retrying");
@@ -336,10 +326,22 @@ class LANDevice {
         cleanup();
         resolve(data);
       };
-      this.client.on("error", handleError);
-      this.client.on("close", handleClose);
-      this.client.on("data", receive);
+      this.client.addListener("error", handleError);
+      this.client.addListener("close", handleClose);
+      this.client.addListener("data", receive);
     });
+
+    await new Promise<void>((resolve, reject) => {
+      this.client.write(message, (err) => {
+        if (err) {
+          reject(new Error("failed to write", { cause: err }));
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    return receiveData;
   }
 
   async authenticate(token: string, key: string) {
@@ -393,7 +395,7 @@ export class MideaAccessory {
   private fanService: Service;
   private outdoorTemperatureService: Service;
   private ecoModeSwitchService: Service;
-  authenticated: boolean = false;
+  private authenticated = false;
 
   createSetCommand() {
     if (!this.status) {
@@ -668,37 +670,38 @@ export class MideaAccessory {
           err,
           (err as Error).stack,
         );
+        this.device.disconnect();
         this.authenticated = false;
       })
       .then(() => setTimeout(this.poll.bind(this), 10 * 1000));
   }
 
   async authenticate() {
+    if (this.authenticated) {
+      return;
+    }
     const udpid = convertUDPId(
       this.accessory.context.deviceIdBytes.toReversed(),
     );
     const { token, key } = await this.platform.getDeviceToken(udpid);
     await this.device.authenticate(token, key);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     this.authenticated = true;
   }
 
   // deduplicate status updates
   private _pendingUpdateStatus: Promise<void> | null = null;
   updateStatus() {
-    if (this._pendingUpdateStatus) {
-      return this._pendingUpdateStatus;
+    if (!this._pendingUpdateStatus) {
+      this._pendingUpdateStatus = this._updateStatus().finally(() => {
+        this._pendingUpdateStatus = null;
+      });
     }
-    this._pendingUpdateStatus = this._updateStatus().finally(() => {
-      this._pendingUpdateStatus = null;
-    });
     return this._pendingUpdateStatus;
   }
 
   async _updateStatus() {
-    if (!this.authenticated) {
-      await this.authenticate();
-    }
+    await this.authenticate();
 
     this.platform.log.debug("requesting status");
     const cmd = new AirConditionerStatusCommand();
