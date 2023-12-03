@@ -294,16 +294,35 @@ class LANDevice {
   }
 
   // ensure requests are serialized, to prevent data coming in for a prior request
-  private _pendingRequest: Promise<Buffer> | null = null;
+  private pendingRequests: Array<() => Promise<void>> = [];
+  private activeRequest?: Promise<void>;
   async request(message: Uint8Array) {
-    if (this._pendingRequest) {
-      this._pendingRequest = this._pendingRequest.finally(() =>
-        this.request_(message),
-      );
-    } else {
-      this._pendingRequest = this.request_(message);
+    // this promise will return the actual request
+    let resolve: (result: Buffer) => void;
+    let reject: (err: unknown) => void;
+    const p = new Promise<Buffer>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    // push a pending operation that when activated will run the request,
+    // fulfilling the promise, then will run the next pending request
+    this.pendingRequests.push(async () => {
+      // run this request, then run next request
+      try {
+        resolve(await this.request_(message));
+      } catch (err) {
+        reject(err);
+      }
+      this.activeRequest = this.pendingRequests.shift()?.();
+    });
+
+    // kick-start first reqest
+    if (!this.activeRequest) {
+      this.activeRequest = this.pendingRequests.shift()?.();
     }
-    return this._pendingRequest;
+
+    return p;
   }
 
   async request_(message: Uint8Array) {
