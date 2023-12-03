@@ -243,26 +243,29 @@ class LANDevice {
     if (this._connection === null) {
       this.log.debug("connecting");
       this._connection = new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.log.warn("connect timeout, retrying");
+        const cleanup = () => {
           this.client.removeListener("error", handleError);
+          clearTimeout(timer);
+        };
+        const timer = setTimeout(() => {
+          this.log.warn("connecting timeout, retrying");
+          cleanup();
           resolve(this.connect());
         }, 1000);
         const handleError = (err: Error) => {
-          this.log.error("connect error", err);
-          this.client.removeListener("error", handleError);
-          clearTimeout(timer);
+          this.log.error("connecting error", err);
+          cleanup();
           reject(err);
         };
         this.client.addListener("error", handleError);
         this.client.connect(this.port, this.address, () => {
-          this.log.debug("connected");
-          this.client.removeListener("error", handleError);
-          clearTimeout(timer);
+          this.log.debug("finished connecting");
+          cleanup();
           resolve();
         });
       });
     }
+    this.log.debug("already connected");
     return this._connection;
   }
 
