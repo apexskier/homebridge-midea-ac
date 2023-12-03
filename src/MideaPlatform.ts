@@ -37,7 +37,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   }
 
   async login() {
-    this.log.debug("Logging in...");
+    this.log.debug("logging in...");
 
     const { loginId } = (await this.apiRequest(
       new URL("https://mapp.appsmb.com/v1/user/login/id/get"),
@@ -66,17 +66,17 @@ export class MideaPlatform implements DynamicPlatformPlugin {
 
   async getDevices() {
     const server = dgram.createSocket("udp4");
-    server.on("error", (err) => {
+    server.addListener("error", (err) => {
       this.log.error("udp server error", err);
     });
-    server.on("listening", () => {
+    server.addListener("listening", () => {
       const address = server.address();
       this.log.debug(
         `discovery server listening ${address.address}:${address.port}`,
       );
       server.send(Constants.DISCOVERY_MSG, 6445, "255.255.255.255");
     });
-    server.on("message", async (data, rinfo) => {
+    server.addListener("message", async (data, rinfo) => {
       this.log.debug(`discovery server got message from ${rinfo.address}`);
 
       const versionBytes = data.subarray(0, 2);
