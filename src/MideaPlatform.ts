@@ -18,6 +18,9 @@ import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
 import { timestamp } from "./timestamp";
 import { MideaErrorCodes } from "./enums/MideaErrorCodes";
 
+const InvalidSession = Symbol("InvalidSession");
+type InvalidSession = typeof InvalidSession;
+
 export class MideaPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic =
@@ -39,12 +42,15 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   async login() {
     this.log.debug("logging in...");
 
-    const { loginId } = (await this.apiRequest(
+    const loginIdResponse = await this.apiRequest<{ loginId: string }>(
       new URL("https://mapp.appsmb.com/v1/user/login/id/get"),
-      {
-        loginAccount: this.config["user"],
-      },
-    )) as { loginId: string };
+      { loginAccount: this.config["user"] },
+    );
+    if (loginIdResponse === InvalidSession) {
+      throw new Error("invalid session getting login id");
+    }
+
+    const { loginId } = loginIdResponse;
 
     const hashedPassword = crypto
       .createHash("sha256")
@@ -54,14 +60,14 @@ export class MideaPlatform implements DynamicPlatformPlugin {
       .createHash("sha256")
       .update(loginId + hashedPassword + Constants.AppKey)
       .digest("hex");
-    const { sessionId } = (await this.apiRequest(
+    const loginResponse = await this.apiRequest<{ sessionId: string }>(
       new URL("https://mapp.appsmb.com/v1/user/login"),
-      {
-        loginAccount: this.config.user,
-        password,
-      },
-    )) as { sessionId: string };
-    return sessionId;
+      { loginAccount: this.config.user, password },
+    );
+    if (loginResponse === InvalidSession) {
+      throw new Error("invalid session getting login id");
+    }
+    return loginResponse.sessionId;
   }
 
   async getDevices() {
@@ -170,12 +176,19 @@ export class MideaPlatform implements DynamicPlatformPlugin {
   async getDeviceToken(udpid: string) {
     const sessionId = await this.login();
 
-    const { tokenlist } = (await this.apiRequest(
-      new URL("https://mapp.appsmb.com/v1/iot/secure/getToken"),
-      { udpid, sessionId },
-    )) as { tokenlist: { udpId: string; token: string; key: string }[] };
+    const response = await this.apiRequest<{
+      tokenlist: { udpId: string; token: string; key: string }[];
+    }>(new URL("https://mapp.appsmb.com/v1/iot/secure/getToken"), {
+      udpid,
+      sessionId,
+    });
+    if (response === InvalidSession) {
+      this.log.debug("invalid session getting device token, relogging in");
+      await this.login();
+      return this.getDeviceToken(udpid);
+    }
 
-    return tokenlist.find(({ udpId }) => udpId === udpid)!;
+    return response.tokenlist.find(({ udpId }) => udpId === udpid)!;
   }
 
   configureAccessory(accessory: PlatformAccessory) {
@@ -184,10 +197,10 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     this.accessories.push(accessory);
   }
 
-  async apiRequest(
+  async apiRequest<T>(
     url: URL,
     params: Record<string, string | number>,
-  ): Promise<unknown> {
+  ): Promise<T | InvalidSession> {
     const form: Record<string, string | number> = {
       appId: Constants.AppId,
       clientType: Constants.ClientType,
@@ -225,8 +238,7 @@ export class MideaPlatform implements DynamicPlatformPlugin {
     const errorCode = parseInt(responseBody.errorCode);
     if (errorCode) {
       if (errorCode === MideaErrorCodes.InvalidSession) {
-        this.log.debug("invalid session, logging in again and retrying");
-        return this.apiRequest(url, params);
+        return InvalidSession;
       }
       throw new Error(
         `error: ${url.pathname}: ${responseBody.errorCode}, ${responseBody.msg}`,
