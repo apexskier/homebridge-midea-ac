@@ -1,6 +1,6 @@
 {
   "name": "@apexskier/homebridge-midea-ac",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Homebridge plugin for Midea AC units",
   "repository": {
     "type": "git",
